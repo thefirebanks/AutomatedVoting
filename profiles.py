@@ -69,5 +69,24 @@ def create_profile_from_distribution(n_voters, candidates, pop_type="spheroid"):
     return Profile(labeled_ranks), df_rank, matrix_rank
 
 
+def generate_profile_dataset(num_profiles, n_voters, candidates):
+    dataset = []
+    for i in range(num_profiles):
+        dataset.append(create_profile_from_distribution(n_voters, candidates))
+
+    return dataset
+
+
 def create_profile_from_data(fname):
     pass
+
+
+def test():
+    profile, profile_df, profile_matrix = create_profile_from_distribution(5, ["Adam", "Bert", "Chad"])
+    profile, profile_df, profile_matrix = create_profile_from_distribution(500, ["Adam", "Bert", "Chad", "Dean", "Elon"])
+
+    profile_dataset = generate_profile_dataset(10, 500, ["Adam", "Bert", "Chad", "Dean", "Elon"])
+
+
+if __name__ == "__main__":
+    test()

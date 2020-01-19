@@ -3,50 +3,41 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 
 =====================================
 
-existing_rules.py: 
-
-```
-def borda(profile):
-    pass
-
-def plurality(profile):
-    pass
-
-def condorcet_exists(profile):
-    pass
-
-def get_condorcet_winner(profile):
-    pass
-
-def median(profile):
-    pass
-
-```
+### TODO:
+1. Look into manipulation methods in depth (use population subset?)
+2. Write the methods for the Condorcet/Majority/IIA/Monotonicity constraints (inherit from Population/Profile)
+3. Define the loss function
+4. Figure out the differentiability of the loss function theoretically
+5. Look into writing the genetic algorithm
 =====================================
 
-generate_data.py:
+profiles.py:
 
 ```
-class Profile:
-    def __init__(self, num_alternatives, num_voters, distribution):
-        self.n_alternatives = num_alternatives
-        self.n_voters = num_voters
-        self.distr = distribution
-        self.profile = np.array(num_alternatives, num_voters)
+create_profile_from_distribution(n_voters, candidates, pop_type="spheroid"):
 
-class PreferenceGenerator:
+create_profile_from_data()
 
-    def generate_ballot():
-        pass
+profile_to_nn_input()
 
-    def generate_profiles(num_profiles):
-        pass
+generate_profile_dataset(num_profiles, n_voters, candidates, from_file=False)
 
-def build_dataset(distribution_params, generate=True):
-    generator = PreferenceGenerator()
-    profiles = generator.generate_profiles(num_profiles)
+```
 
-    return profiles
+=====================================
+
+election.py:
+
+```
+# 1. Create a profile
+profile = create_profile_from_distribution(500, ["Adam", "Bert", "Chad"])
+   
+# 2. Set weights in order of position
+weights = [25, 23, 22]
+
+# 3. Run election
+results = election(profile, weights)
+
 ```
 =====================================
 
@@ -84,6 +75,7 @@ class VotingNN:
         pass
 
 ```
+
 =====================================
 
 main.py: 
@@ -91,7 +83,7 @@ main.py:
 ```
 def main():
     # 1. Generate or read and process data: Preference profiles as a dataframe/matrix
-    dataset = build_dataset("normal", generate=True)
+    dataset = generate_profile_dataset(num_profiles, n_voters, candidates)
 
     # 2. Train/test split
     train_X, test_X, train_y, test_y = train_test_split(dataset, t_perc=0.2)
