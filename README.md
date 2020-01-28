@@ -6,9 +6,9 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 ### TODO:
 1. Look into manipulation methods in depth (use population subset?)
 2. Write the methods for the Condorcet/Majority/IIA/Monotonicity constraints (inherit from Population/Profile)
-3. Define the loss function
-4. Figure out the differentiability of the loss function theoretically
-5. Look into writing the genetic algorithm
+3. Define the loss function (Done)
+4. Figure out the differentiability of the loss function theoretically (Done)
+5. Look into writing the genetic algorithm (Done)
 =====================================
 
 profiles.py:
