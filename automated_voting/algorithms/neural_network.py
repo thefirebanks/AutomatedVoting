@@ -58,30 +58,6 @@ def loss_batch(model, loss_func, xb, yb, opt=None):
 
     return loss.item(), len(xb)
 
-# 2.3 Define custom loss function using an external library
-# class CustomLoss(nn.Module):
-#     def __init__(self):
-#         super(CustomLoss, self).__init__()
-#         self.requires_grad = True
-#
-#     def forward(self, input, target):
-#         loss = torch.argmax(input)# + torch.tensor(80)
-#         print(loss)
-#         # print("DOES THIS WORK!?!?!?!?!?!?!?!!?!?!?!!?")
-#         return loss
-
-def funky_helper(variable):
-    return variable * 2
-
-def funky_loss(input, target):
-    ''' We will do mean square error taking in account an external function '''
-
-    # print(input.shape, preds.shape, target.shape)
-
-    loss = torch.sum((input-target)**2)
-    return loss + funky_helper(loss)
-
-
 ################################################################################
 # 3. Learning
 def fit(epochs, model, loss_func, opt, train_dl, valid_dl):
@@ -147,7 +123,7 @@ def main(model="Logistic"):
         model = MnistCNN()
 
     # 2.2 Define loss function -> For now, we will use cross entropy
-    loss_func = funky_loss
+    loss_func = F.cross_entropy
     loss_func.requires_grad = True
 
     # 2.3 Define optimizer

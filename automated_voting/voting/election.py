@@ -1,5 +1,5 @@
 from whalrus.rule.RuleScorePositional import RuleScorePositional
-from profiles import create_profile
+from profiles import AVProfile
 from constraints import check_condorcet, check_majority
 import sys
 
@@ -7,10 +7,6 @@ import sys
     - To pick a subset of population candidates use svvamp PopulationSubsetCandidates if needed
     - Find a way of taking in types of population (distribution) and constraints?
     - Should this be a class?'''
-
-
-
-
 
 '''    #%% Independence of Irrelevant Alternatives (IIA)
 
@@ -227,7 +223,6 @@ import sys
         '''
 
 
-
 def election(profile, weights=None):
     if weights is None:
         raise Exception("Must insert weights!")
@@ -244,16 +239,15 @@ def election(profile, weights=None):
 
 
 def main():
-
-    if sys.argv[1]:
+    try:
         n_voters = int(sys.argv[1])
-    else:
-        n_voters = 20
+    except Exception as e:
+        raise Exception("Insert a number of voters!")
 
     # 1. Create a profile
-    profile, profile_df, profile_matrix = create_profile(n_voters, origin="distribution",
-                                                         params="spheroid", candidates=["Adam", "Bert", "Chad"])
-    print(profile_df)
+    profile = AVProfile(n_voters, origin="distribution", params="spheroid", candidates=["Adam", "Bert", "Chad"])
+    print(profile.rank_df)
+    print(profile.rank_matrix)
 
     # 2. Set weights in order of position
     weights = [2, 1, 0]
@@ -262,7 +256,7 @@ def main():
     results = election(profile, weights)
 
     print("Is Condorcet compliant?:", check_condorcet(profile, results))
-    print("Satisfies majority criterion?", check_majority(profile_df, results))
+    print("Satisfies majority criterion?", check_majority(profile.rank_df.T, results))
 
     for result, value in results.items():
         print(f"{result}: {value}")
