@@ -1,9 +1,4 @@
 
-# TODO: Solve import issues!
-import automated_voting.voting.profiles
-import numpy as np
-
-
 def main():
     pass
     # Generate profiles for dataset

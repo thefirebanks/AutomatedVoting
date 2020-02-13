@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import svvamp as sv
 from whalrus.profile.Profile import Profile
+from whalrus.rule.RuleCondorcet import RuleCondorcet
 
 
 class AVProfile(Profile):
@@ -43,10 +44,16 @@ class AVProfile(Profile):
             self._preferences = pop.preferences_rk
             pop.labels_candidates = self._labels_candidates = candidates
 
-        else:  # origin == "data", params = filename
+        elif origin == "data":  # params = filename
             preferences = np.genfromtxt(params, delimiter=',', dtype=str)
             self._labels_candidates = preferences[0, :]
             self._preferences = preferences[1:, :].astype(int)
+        else:
+            raise Exception("Insert either distribution or data as the parameter origin!")
+
+        # Basic properties
+        self._n_candidates = len(self._labels_candidates)
+        self._n_voters = n_voters
 
         # Create a dataframe representation of the profile so we can print it out
         self._rank_matrix = self.to_count_matrix()
@@ -62,6 +69,28 @@ class AVProfile(Profile):
         # Create a profile object - automatically creates ordered ballots
         super().__init__(self._labeled_ranks)
 
+        # Create one-hot vectors of established candidates (Condorcet, Majority, etc.)
+        self._condorcet_w = self.get_condorcet()
+        self._majority_w = self.get_majority()
+
+    # Basic properties
+    @property
+    def n_candidates(self):
+        return self._n_candidates
+
+    @property
+    def n_voters(self):
+        return self._n_voters
+
+    @property
+    def candidates(self):
+        return self._labels_candidates
+
+    @property
+    def preferences(self):
+        return self._preferences
+
+    # Ballots and Profile matrix/dataframe formats
     @property
     def rank_matrix(self):
         return self._rank_matrix.T
@@ -74,14 +103,7 @@ class AVProfile(Profile):
     def rank_df(self):
         return self._df_rank.T
 
-    @property
-    def candidates(self):
-        return self._labels_candidates
-
-    @property
-    def preferences(self):
-        return self._preferences
-
+    # Ballot descriptors
     @property
     def labeled_ballots(self):
         return self._labeled_ranks
@@ -94,13 +116,59 @@ class AVProfile(Profile):
     def ballot_df(self):
         return self._ballot_df
 
+    # Profile special candidates
+    @property
+    def condorcet_w(self):
+        return self._condorcet_w
+
+    @property
+    def majority_w(self):
+        return self._majority_w
+
+    def get_condorcet(self) -> np.array:
+        """ Check if a profile contains a condorcet winner and returns a one-hot vector representing them.
+            Returns:
+                - A numpy array of size n_candidates, where candidate i is 1 if they are a Condorcet winner,
+                and the rest are 0. If there is no Condorcet winner, then all elements are 0
+                 """
+
+        condorcet = RuleCondorcet(self)
+
+        if len(condorcet.cowinners_) == 1:
+            winner = next(iter(condorcet.cowinners_))
+            winner_idx = self.candidates.index(winner)
+
+            one_hot = np.zeros(shape=(self.n_candidates,))
+            one_hot[winner_idx] = 1
+
+            return one_hot
+
+        return np.zeros(shape=(self.n_candidates,))
+
+    def get_majority(self) -> np.array:
+        """ Check if a profile contains a majority winner and returns a one-hot vector representing them.
+            Returns:
+                - A numpy array of size n_candidates, where candidate i is 1 if they are a majority winner,
+                and the rest are 0. If there is no majority winner, then all elements are 0 """
+
+        # Get the first row as those are the counts for how many times a candidate was ranked first
+        first_candidates = self.rank_matrix[0]
+
+        for candidate_idx, candidate_votes in enumerate(first_candidates):
+            if candidate_votes >= 0.5 * self.n_voters:
+                one_hot = np.zeros(shape=(self.n_candidates,))
+                one_hot[candidate_idx] = 1
+                return one_hot
+
+        return np.zeros(shape=(self.n_candidates,))
+
     def label_profile(self) -> (list, list):
         """ Convert profile to a list of {candidate: rank} per voter
             Then return a list of labeled candidates in order of rank """
 
         ordered_prof = []
 
-        for ballot in self.preferences:
+        for ballot in self._preferences:
             ordered_ballot = {}
             for candidate, rank in zip(self._labels_candidates, ballot):
                 ordered_ballot[candidate] = rank
@@ -119,9 +187,9 @@ class AVProfile(Profile):
         """ Create a matrix representation of the profile,
         where matrix[c][r] represent the frequency of candidate c in rank r """
 
-        matrix_rank = [[0] * len(self.preferences[0]) for _ in self.preferences[0]]
+        matrix_rank = [[0] * len(self._preferences[0]) for _ in self._preferences[0]]
 
-        for ballot in self.preferences:
+        for ballot in self._preferences:
             for j, rank in enumerate(ballot):
                 matrix_rank[j][rank] += 1
 
@@ -179,8 +247,7 @@ def generate_profile_dataset(num_profiles, n_voters, candidates):
     dataset = []
     for i in range(num_profiles):
         dataset.append(AVProfile(n_voters, origin="distribution", params="spheroid", candidates=candidates))
-    return np.array(dataset)
-
+    return dataset
 
 def test():
     _ = AVProfile(5, origin="distribution",
