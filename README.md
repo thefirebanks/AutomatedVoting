@@ -3,7 +3,7 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 
 ## Next steps
 
-- [ ] Compile model, training and loss into a class
+- [x] Compile model, training and loss into a class
 - [ ] Write simulator generator for IM matrices
 - [ ] Allow for multiple forward passes to happen in the loss function for simulators
 - [ ] Add IM component to loss

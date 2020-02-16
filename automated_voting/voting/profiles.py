@@ -4,7 +4,6 @@ import svvamp as sv
 from whalrus.profile.Profile import Profile
 from whalrus.rule.RuleCondorcet import RuleCondorcet
 
-
 class AVProfile(Profile):
     def __init__(self, n_voters, origin="distribution", params="spheroid", candidates=None):
 
@@ -70,8 +69,15 @@ class AVProfile(Profile):
         super().__init__(self._labeled_ranks)
 
         # Create one-hot vectors of established candidates (Condorcet, Majority, etc.)
-        self._condorcet_w = self.get_condorcet()
-        self._majority_w = self.get_majority()
+        self._condorcet_w, self._condorcet_w_vector = self.get_condorcet()
+        self._majority_w, self._majority_w_vector = self.get_majority()
+        self._plurality_w, self._plurality_w_vector = self.get_plurality()
+
+        # Create a sample of simulated profiles for IM
+        self._IM_rank_matrices = self.generate_IM_profiles(10)
+
+        # Create a sample of simulated profiles for IIA
+        self._IIA_rank_matrices = self.generate_IIA_profiles(10)
 
     # Basic properties
     @property
@@ -96,6 +102,19 @@ class AVProfile(Profile):
         return self._rank_matrix.T
 
     @property
+    def flat_rank_matrix(self, simulated=False):
+        """
+            Input matrix for neural network
+            - Flatten dataset for network input layer purposes
+            - Reshape to (n_features, 1) for tensor input, then transpose to make it n_features columns,
+               where n_features = n_candidates**2 """
+        if not simulated:
+            return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+        else:
+            # TODO: Add the IIA matrix here
+            return np.array([matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T for matrix in self.IM_rank_matrices])
+
+    @property
     def tournament_matrix(self):
         return self._tournament_matrix
 
@@ -116,18 +135,40 @@ class AVProfile(Profile):
     def ballot_df(self):
         return self._ballot_df
 
-    # Profile special candidates
+    # Profile special candidates (strings and vectors
     @property
     def condorcet_w(self):
         return self._condorcet_w
 
     @property
+    def condorcet_w_vector(self):
+        return self._condorcet_w_vector
+
+    @property
     def majority_w(self):
         return self._majority_w
 
-    def get_condorcet(self) -> np.array:
+    @property
+    def majority_w_vector(self):
+        return self._majority_w_vector
+
+    @property
+    def plurality_w(self):
+        return self._plurality_w
+
+    @property
+    def plurality_w_vector(self):
+        return self._plurality_w_vector
+
+    # Simulated profiles for IM
+    @property
+    def IM_rank_matrices(self):
+        return self._IM_rank_matrices
+
+    def get_condorcet(self) -> (str, np.array):
         """ Check if a profile contains a condorcet winner and returns a one-hot vector representing them.
             Returns:
+                - The name of the winner as a string, or "No Condorcet Winner" otherwise
                 - A numpy array of size n_candidates, where candidate i is 1 if they are a Condorcet winner,
                 and the rest are 0. If there is no Condorcet winner, then all elements are 0
                  """
@@ -141,13 +182,14 @@ class AVProfile(Profile):
             one_hot = np.zeros(shape=(self.n_candidates,))
             one_hot[winner_idx] = 1
 
-            return one_hot
+            return winner, one_hot
 
-        return np.zeros(shape=(self.n_candidates,))
+        return "No Condorcet Winner", np.zeros(shape=(self.n_candidates,))
 
-    def get_majority(self) -> np.array:
+    def get_majority(self) -> (str, np.array):
         """ Check if a profile contains a majority winner and returns a one-hot vector representing them.
             Returns:
+                - The name of the winner as a string, or "No Majority Winner" otherwise
                 - A numpy array of size n_candidates, where candidate i is 1 if they are a majority winner,
                 and the rest are 0. If there is no majority winner, then all elements are 0 """
 
@@ -158,9 +200,30 @@ class AVProfile(Profile):
             if candidate_votes >= 0.5 * self.n_voters:
                 one_hot = np.zeros(shape=(self.n_candidates,))
                 one_hot[candidate_idx] = 1
-                return one_hot
+                return self.candidates[candidate_idx], one_hot
 
-        return np.zeros(shape=(self.n_candidates,))
+        return "No Majority Winner", np.zeros(shape=(self.n_candidates,))
+
+    # TODO: Instead of returning one of the candidates with equal probability,
+    #  return the one with the most second choice votes!!!!!! OR most votes recursively
+    def get_plurality(self) -> (str, np.array):
+        """ Returns the plurality winner of a given profile. If there are ties, it randomly returns one of the candidates
+            with equal probability
+
+            Returns:
+                - The name of the winner
+                - A numpy array of size n_candidates, where candidate i is 1 if they are a majority winner,
+                and the rest are 0 """
+
+        # Get the plurality winner from the first row of the rank matrix, break ties randomly
+        winner_idx = np.random.choice(np.flatnonzero(self.rank_matrix[0] == self.rank_matrix[0].max()))
+        winner = self.candidates[winner_idx]
+
+        # Get the one-hot vector
+        one_hot = np.zeros(shape=(self.n_candidates,))
+        one_hot[winner_idx] = 1
+
+        return winner, one_hot
 
     def label_profile(self) -> (list, list):
         """ Convert profile to a list of {candidate: rank} per voter
@@ -242,12 +305,11 @@ class AVProfile(Profile):
 
         return df
 
+    def generate_IM_profiles(self, count) -> np.array:
+        return np.array
 
-def generate_profile_dataset(num_profiles, n_voters, candidates):
-    dataset = []
-    for i in range(num_profiles):
-        dataset.append(AVProfile(n_voters, origin="distribution", params="spheroid", candidates=candidates))
-    return dataset
+    def generate_IIA_profiles(self, count) -> np.array:
+        return np.array
 
 def test():
     _ = AVProfile(5, origin="distribution",

@@ -83,6 +83,12 @@ class AVProfile(Profile):
         self._majority_w, self._majority_w_vector = self.get_majority()
         self._plurality_w, self._plurality_w_vector = self.get_plurality()
 
+        # Create a sample of simulated profiles for IM
+        self._IM_rank_matrices = self.generate_IM_profiles(10)
+
+        # Create a sample of simulated profiles for IIA
+        self._IIA_rank_matrices = self.generate_IIA_profiles(10)
+
     # Basic properties
     @property
     def n_candidates(self):
@@ -106,14 +112,17 @@ class AVProfile(Profile):
         return self._rank_matrix.T
 
     @property
-    def flat_rank_matrix(self):
+    def flat_rank_matrix(self, simulated=False):
         """
             Input matrix for neural network
             - Flatten dataset for network input layer purposes
             - Reshape to (n_features, 1) for tensor input, then transpose to make it n_features columns,
                where n_features = n_candidates**2 """
-
-        return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+        if not simulated:
+            return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+        else:
+            # TODO: Add the IIA matrix here
+            return np.array([matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T for matrix in self.IM_rank_matrices])
 
     @property
     def tournament_matrix(self):
@@ -136,7 +145,7 @@ class AVProfile(Profile):
     def ballot_df(self):
         return self._ballot_df
 
-    # Profile special candidates
+    # Profile special candidates (strings and vectors
     @property
     def condorcet_w(self):
         return self._condorcet_w
@@ -160,6 +169,11 @@ class AVProfile(Profile):
     @property
     def plurality_w_vector(self):
         return self._plurality_w_vector
+
+    # Simulated profiles for IM
+    @property
+    def IM_rank_matrices(self):
+        return self._IM_rank_matrices
 
     def get_condorcet(self) -> (str, np.array):
         """ Check if a profile contains a condorcet winner and returns a one-hot vector representing them.
@@ -301,6 +315,12 @@ class AVProfile(Profile):
 
         return df
 
+    def generate_IM_profiles(self, count) -> np.array:
+        return np.array
+
+    def generate_IIA_profiles(self, count) -> np.array:
+        return np.array
+
 
 def generate_profile_dataset(num_profiles, n_voters, candidates):
     dataset = []
@@ -326,8 +346,11 @@ class AVNet(Model):
         #         self.last_layer = Dense(n_candidates, activation='relu')
         self.scorer = Dense(n_candidates, activation='softmax')
 
+        # Define optimizer and loss function (MUST BE "GLOBAL!")
+        self.optimizer = Adam(learning_rate=0.01)
+        self.CCE = CategoricalCrossentropy()
 
-    def call(self, inputs):
+    def call(self, inputs, **kwargs):
         """ Inputs is some tensor version of the ballots in an AVProfile
             For testing purposes we will use AVProfile.rank_matrix, which represents
             the count of each candidate per rank """
@@ -335,81 +358,105 @@ class AVNet(Model):
         # Get rank matrices
         x = self.input_layer(inputs)
         x = self.mid_layer(x)
-        #         x = self.last_layer(x)
+        # x = self.last_layer(x)
 
         return self.scorer(x)
 
-# Define optimizer and loss function (MUST BE "GLOBAL!")
-optimizer = Adam(learning_rate=0.01)
-CCE = CategoricalCrossentropy()
+    @staticmethod
+    def get_winner(candidate_vector, candidates):
+        return candidates[np.argmax(candidate_vector.numpy())]
 
-def scores_to_winner(candidate_vector, candidates):
-    return candidates[np.argmax(candidate_vector.numpy())]
+    def av_loss(self, profile, verbose=False):
+        """ An av_loss function will take an instance of <profile, condorcet_winner, majority_winner, simulator_list>, where
 
-def av_loss(model, profile, verbose=False):
-    """ An av_loss function will take an instance of <profile, condorcet_winner, majority_winner, simulator_list>, where
+            - profile = AVProfile.rank_matrix (shape: n_candidates x n_candidates)
+            - condorcet_winner = AVProfile.condorcet_winner (one-hot vector of size n_candidates)
+            - majority_winner = AVProfile.majority_winner (one-hot vector of size n_candidates)
+            - (IIA or IM)_simulator = AVProfile.IIA_profiles, AVProfile.IM_profiles (list of matrices of shape: n_candidates x n_candidates)
 
-        - profile = AVProfile.rank_matrix (shape: n_candidates x n_candidates)
-        - condorcet_winner = AVProfile.condorcet_winner (one-hot vector of size n_candidates)
-        - majority_winner = AVProfile.majority_winner (one-hot vector of size n_candidates)
-        - (IIA or IM)_simulator = AVProfile.IIA_profiles, AVProfile.IM_profiles (list of matrices of shape: n_candidates x n_candidates)
+            Idea: For 1 profile, the av_loss will be the sum of all the loss components according to the constraints above.
+            -> When there is a one-hot vector, we will use cross entropy
+            -> When there is a simulator list, we will add up the cross entropy losses after "running the election"
 
-        Idea: For 1 profile, the av_loss will be the sum of all the loss components according to the constraints above.
-        -> When there is a one-hot vector, we will use cross entropy
-        -> When there is a simulator list, we will add up the cross entropy losses after "running the election"
+            Extras:
+            -> Add a regularization term for the sum of cross entropy in the simulator list case
 
-        Extras:
-        -> Add a regularization term for the sum of cross entropy in the simulator list case
+        """
 
-    """
+        # Original profile rank matrix
+        profile_matrix = profile.flat_rank_matrix
 
-    # Decompose profile object
-    profile_matrix = profile.flat_rank_matrix
-    condorcet_w = profile.condorcet_w
-    majority_w = profile.condorcet_w
-    plurality_w = profile.plurality_w
-    condorcet_w_vec = profile.condorcet_w_vector
-    majority_w_vec = profile.majority_w_vector
-    plurality_w_vec = profile.plurality_w_vector
+        # Simulated profiles for IM
+        # alt_profiles = profile.IM_rank_matrices
 
-    # Make a forward pass
-    predictions = model(profile_matrix)
+        # Winners as strings
+        condorcet_w = profile.condorcet_w
+        majority_w = profile.condorcet_w
+        plurality_w = profile.plurality_w
 
-    # Interpret the results
-    if verbose:
-        print("------------------------------------------------------------")
-        print("Condorcet winner:", condorcet_w)
-        print("Majority winner:", majority_w)
-        print("Plurality winner:", plurality_w)
-        print("-----------------")
-        print("Predicted winner:", scores_to_winner(predictions, profile.candidates))
-        print("------------------------------------------------------------")
+        # One-hot vectors
+        condorcet_w_vec = profile.condorcet_w_vector
+        majority_w_vec = profile.majority_w_vector
+        plurality_w_vec = profile.plurality_w_vector
 
-    def loss(plurality_c, pred_c):
-        # If there isn't a Condorcet or a Majority winner, just use the Plurality winner
-        if np.count_nonzero(condorcet_w_vec) == 0 and np.count_nonzero(majority_w_vec):
-            plurality_score = CategoricalCrossentropy(plurality_c, pred_c)
-            return plurality_score
-        else:
-            condorcet_score = CCE(condorcet_w_vec, pred_c)
-            majority_score = CCE(majority_w_vec, pred_c)
-            score = condorcet_score + majority_score
-            return score
+        # Make a forward pass to the profile
+        predictions = self.call(profile_matrix)
 
-    # Return loss function
-    return loss(plurality_c=plurality_w_vec, pred_c=predictions)
+        # Interpret the results
+        if verbose:
+            print("------------------------------------------------------------")
+            print("Condorcet winner:", condorcet_w)
+            print("Majority winner:", majority_w)
+            print("Plurality winner:", plurality_w)
+            print("-----------------")
+            print("Predicted winner:", self.get_winner(predictions, profile.candidates))
+            print("------------------------------------------------------------")
 
+        def loss(plurality_c, pred_c):
+            # If there isn't a Condorcet or a Majority winner, just use the Plurality winner
+            if np.count_nonzero(condorcet_w_vec) == 0 and np.count_nonzero(majority_w_vec):
+                plurality_score = CategoricalCrossentropy(plurality_c, pred_c)
+                return plurality_score
+            else:
+                condorcet_score = self.CCE(condorcet_w_vec, pred_c)
+                majority_score = self.CCE(majority_w_vec, pred_c)
+                score = condorcet_score + majority_score
+                return score
 
-def grad(model, profile, verbose=False):
-    with GradientTape() as tape:
-        loss_value = av_loss(model, profile, verbose)
+        # Return loss function
+        return loss(plurality_c=plurality_w_vec, pred_c=predictions)
 
-    return loss_value, tape.gradient(loss_value, model.trainable_variables)
+    def calculate_grad(self, profile, verbose=False):
+        with GradientTape() as tape:
+            loss_value = self.av_loss(profile, verbose)
+
+        return loss_value, tape.gradient(loss_value, self.trainable_variables)
+
+    def train(self, profiles, epochs):
+        for epoch in range(epochs):
+
+            print(f"Epoch {epoch} ==============================================================")
+            # Iterate through the list of profiles, not datasets
+            for i in range(len(profiles)):
+
+                # Perform forward pass + calculate gradients
+                if i % 10 == 0:
+                    loss_value, grads = self.calculate_grad(profiles[i], verbose=True)
+                else:
+                    loss_value, grads = self.calculate_grad(profiles[i])
+
+                # Print information
+                if i % 10 == 0:
+                    print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
+
+                self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
+
+            print()
 
 
 def main():
 
-    #### Step 1: Define basic parameters
+    # Step 1: Define basic parameters
     n_profiles = 20
     n_voters = 5
     n_candidates, candidates = 3, ["Adam", "Bert", "Chad"]
@@ -419,34 +466,13 @@ def main():
     print("Number of candidates:", n_candidates)
     print("Number of features:", n_features)
 
-    #### Step 2: Generate profiles/dataset
-
+    # Step 2: Generate profiles/dataset
     profiles = generate_profile_dataset(n_profiles, n_voters, candidates)
 
-    #### Step 3: Define model and start training loop
+    # Step 3: Define model and start training loop
     av_model = AVNet(n_features, n_candidates, inp_shape=(1, n_features))
+    av_model.train(profiles, epochs=10)
 
-    epochs = 10
-
-    for epoch in range(epochs):
-
-        print(f"Epoch {epoch} ==============================================================")
-        # Iterate through the list of profiles, not datasets
-        for i in range(len(profiles)):
-
-            # Perform forward pass + calculate gradients
-            if i % 10 == 0:
-                loss_value, grads = grad(av_model, profiles[i], verbose=True)
-            else:
-                loss_value, grads = grad(av_model, profiles[i])
-
-            # Print information
-            if i % 10 == 0:
-                print(f"Step: {optimizer.iterations.numpy()}, Loss: {loss_value}")
-
-            optimizer.apply_gradients(zip(grads, av_model.trainable_variables))
-
-        print()
 
 if __name__ == "__main__":
     main()
