@@ -74,10 +74,10 @@ class AVProfile(Profile):
         self._plurality_w, self._plurality_w_vector = self.get_plurality()
 
         # Create a sample of simulated profiles for IM
-        self._IM_rank_matrices = self.generate_IM_profiles(10)
+        self._IM_profiles = self.create_IM()
 
         # Create a sample of simulated profiles for IIA
-        self._IIA_rank_matrices = self.generate_IIA_profiles(10)
+        # self._IIA_profiles = self.create_IIA_dict()
 
     # Basic properties
     @property
@@ -100,19 +100,6 @@ class AVProfile(Profile):
     @property
     def rank_matrix(self):
         return self._rank_matrix.T
-
-    @property
-    def flat_rank_matrix(self, simulated=False):
-        """
-            Input matrix for neural network
-            - Flatten dataset for network input layer purposes
-            - Reshape to (n_features, 1) for tensor input, then transpose to make it n_features columns,
-               where n_features = n_candidates**2 """
-        if not simulated:
-            return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
-        else:
-            # TODO: Add the IIA matrix here
-            return np.array([matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T for matrix in self.IM_rank_matrices])
 
     @property
     def tournament_matrix(self):
@@ -162,8 +149,19 @@ class AVProfile(Profile):
 
     # Simulated profiles for IM
     @property
-    def IM_rank_matrices(self):
-        return self._IM_rank_matrices
+    def IM_profiles(self):
+        return self._IM_profiles
+
+    def flatten_rank_matrix(self, rank_matrix=None) -> np.array:
+        """
+            Input matrix for neural network
+            - Flatten dataset for network input layer purposes
+            - Reshape to (n_features, 1) for tensor input, then transpose to make it n_features columns,
+               where n_features = n_candidates**2 """
+        if not rank_matrix:
+            return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+        else:
+            return rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
 
     def get_condorcet(self) -> (str, np.array):
         """ Check if a profile contains a condorcet winner and returns a one-hot vector representing them.
@@ -305,17 +303,102 @@ class AVProfile(Profile):
 
         return df
 
-    def generate_IM_profiles(self, count) -> np.array:
-        return np.array
+    def create_IM(self, count=10) -> dict:
+        IM_dict = dict()
+        for possible_winner in range(self.n_candidates):
+            IM_dict[possible_winner] = self.generate_IM_profiles(possible_winner, count)
+
+        return IM_dict
+
+    def generate_IM_profiles(self, winner_idx, count) -> list:
+        """ TODO: SOLVE THE POSSIBILITY FOR REPEATED SIMULATIONS """
+        IM_profiles = []
+        wanted_candidates = [i for i in range(self.n_candidates) if i != winner_idx]
+
+        for i in range(count):
+            for alt_candidate in wanted_candidates:
+                IM_profile = self.generate_IM_rank_matrix(alt_candidate, winner_idx)
+
+                if IM_profile in IM_profiles:
+                    while IM_profile in IM_profiles:
+                        IM_profile = self.generate_IM_rank_matrix(alt_candidate, winner_idx)
+                IM_profiles.append(IM_profile)
+
+        return IM_profiles
+
+    def generate_IM_rank_matrix(self, wanted_idx, winner_idx, option=1) -> np.array:
+        """ Given a winner candidate, and a wanted candidate != winner candidate for a particular voter,
+            return an alternative rank_matrix reflecting a non-truthful ballot from that voter
+
+            @param: wanted_candidate = int, the index of a non-winner preferred candidate
+            @param: winner_candidate = int, the index of the winner candidate for a particular rank_matrix
+            @param: rank_matrix = 2D np.array representing the original preference profile
+
+            @returns: alt_rank_matrix = 2D np.array representing an alternative rank_matrix """
+
+        # TODO: DEAL WITH ZEROS IN THE MATRIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!! So we don't end up with negative ranks
+
+        # Deep copy the rank matrix to avoid modifying the original one
+        new_rank_matrix = self.rank_matrix.copy()
+
+        # Get a list of possible candidates whose score we can increase, that are not the winner or the wanted candidate
+        possible_candidates = [i for i in range(self.n_candidates) if i != winner_idx and i != wanted_idx]
+
+        # Get possible ranks to increase/decrease
+        possible_ranks = [i for i in range(1, self.n_candidates)]
+
+        if option == 1:
+            # Possible alteration 1: For n_candidates >= 3.
+            # Swap the position of a non-winner and non-wanted candidate with the winner candidate on a given ballot
+            # Say we have an honest ballot Bert -> Chad -> Adam
+            # We want to transform it into Bert -> Adam -> Chad
+
+            # Choose a random candidate from the leftover candidates
+            candidate_up = np.random.choice(possible_candidates)
+
+            # We are decreasing the winner's score
+            candidate_down = winner_idx
+
+        elif option == 2:
+            # Possible alteration 2:
+            # We could include the winner as part of the leftover candidates maybe?
+            # We can also include another candidate that is not the winner to decrease its score
+
+            # Choose a random non-winner, non-wanted candidate to decrease the score from
+            candidate_down = np.random.choice(possible_candidates)
+
+            # Add the winner to be included in the list of candidates whose score we will increase
+            possible_candidates.append(winner_idx)
+
+            # Choose a candidate whose score we will increase
+            candidate_up = np.random.choice(possible_candidates)
+
+        #     elif option == 3:
+        # Possible alteration 3:
+        # Any option from before BUT now, rank 1 is also in play
+
+        # Get the random ranks
+        candidate_down_rank = np.random.choice(possible_ranks)
+        candidate_up_rank = np.random.choice(possible_ranks)
+
+        # Perform operations
+        new_rank_matrix[candidate_up_rank, candidate_up] -= 1
+        new_rank_matrix[candidate_down_rank, candidate_down] -= 1
+
+        new_rank_matrix[candidate_up_rank, candidate_down] += 1
+        new_rank_matrix[candidate_down_rank, candidate_up] += 1
+
+        return new_rank_matrix
 
     def generate_IIA_profiles(self, count) -> np.array:
         return np.array
 
 def test():
-    _ = AVProfile(5, origin="distribution",
-                  params="spheroid", candidates=["Adam", "Bert", "Chad"])
+    pass
+    # _ = AVProfile(5, origin="distribution",
+    #               params="spheroid", candidates=["Adam", "Bert", "Chad"])
 
-    # _ = AVProfile(500, origin="distribution",
+    # _ = AVProfile(20, origin="distribution",
     #               params="spheroid", candidates=["Adam", "Bert",
     #                                              "Chad", "Dean", "Elon"])
 
