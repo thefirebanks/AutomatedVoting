@@ -458,6 +458,7 @@ def generate_profile_dataset(num_profiles, n_voters, candidates):
     return dataset
 
 #######################################################################################################################
+# neural_network.py code
 
 class AVNet(Model):
     def __init__(self, n_features, n_candidates, inp_shape):
@@ -479,6 +480,19 @@ class AVNet(Model):
         # Define optimizer and loss function (MUST BE "GLOBAL!")
         self.optimizer = Adam(learning_rate=0.01)
         self.CCE = CategoricalCrossentropy()
+
+        # TODO: We should also store all the different values of these scores to plot overtime!!!!
+        # Scoring functions
+        self.total_condorcet = 0
+        self.total_majority = 0
+        self.total_plurality = 0
+        self.total_IM = 0
+
+        self.condorcet_score = 0
+        self.majority_score = 0
+        self.plurality_score = 0
+        self.IM_score = 0
+
 
     def call(self, inputs, **kwargs):
         """ Inputs is some tensor version of the ballots in an AVProfile
@@ -526,7 +540,7 @@ class AVNet(Model):
 
         # Winners as strings
         condorcet_w = profile.condorcet_w
-        majority_w = profile.condorcet_w
+        majority_w = profile.majority_w
         plurality_w = profile.plurality_w
 
         # One-hot vectors
@@ -536,10 +550,25 @@ class AVNet(Model):
 
         # Make a forward pass to the profile
         predictions = self.call(profile_matrix)
+        pred_w = self.get_winner(predictions, profile.candidates)
 
         # Simulated preferences according to the predicted winner
         alternative_profiles = profile.IM_profiles[self.get_winner(predictions, profile.candidates, out_format="idx")]
         alternative_profiles = [profile.flatten_rank_matrix(alt_profile) for alt_profile in alternative_profiles]
+
+        # Keep track of scores
+        if condorcet_w != "No Condorcet Winner":
+            self.total_condorcet += 1
+            if pred_w == condorcet_w:
+                self.condorcet_score += 1
+        if majority_w != "No Majority Winner":
+            self.total_majority += 1
+            if pred_w == majority_w:
+                self.majority_score += 1
+        else: # We will use Plurality if no Condorcet or Majority winner
+            self.total_plurality += 1
+            if pred_w == plurality_w:
+                self.plurality_score += 1
 
         # Interpret the results
         if verbose:
@@ -567,6 +596,10 @@ class AVNet(Model):
                     alt_profiles_score += 1
 
                 IM_score += self.CCE(pred_c_vec, alt_winner)
+
+            # Store scores
+            self.total_IM += len(alternative_profiles)
+            self.IM_score += alt_profiles_score
 
             if verbose:
                 print(f"IM score: {alt_profiles_score}/{len(alternative_profiles)}")
@@ -617,8 +650,8 @@ def main():
     start_d = time.time()
 
     # Step 1: Define basic parameters
-    n_profiles = 100
-    n_voters = 100
+    n_profiles = 50
+    n_voters = 500
     candidates = ["Austin", "Brad", "Chad", "Derek", "Ethan"]
     n_candidates = len(candidates)
     n_features = n_candidates * n_candidates
@@ -638,6 +671,25 @@ def main():
     # Step 3: Define model and start training loop
     av_model = AVNet(n_features, n_candidates, inp_shape=(1, n_features))
     av_model.train(profiles, epochs=10)
+
+    print("===================================================")
+    print("Results")
+    print("---------------------------------------------------")
+
+    if av_model.total_condorcet != 0:
+        print(f"Condorcet Score: {av_model.condorcet_score}/{av_model.total_condorcet} = {av_model.condorcet_score/av_model.total_condorcet}")
+    else:
+        print("No Condorcet Winners")
+    if av_model.total_majority != 0:
+        print(f"Majority Score: {av_model.majority_score}/{av_model.total_majority} = {av_model.majority_score/av_model.total_majority}")
+    else:
+        print("No Majority Winners")
+    if av_model.total_plurality != 0:
+        print(f"Plurality Score: {av_model.plurality_score}/{av_model.total_plurality} = {av_model.plurality_score/av_model.total_plurality}")
+    else:
+        print("No Plurality Winners were used")
+
+    print(f"IM Score: {av_model.IM_score}/{av_model.total_IM} = {av_model.IM_score/av_model.total_IM}")
 
     elapsed_n = time.time() - start_n
     print("Train time:", time.strftime("%H:%M:%S", time.gmtime(elapsed_n)))

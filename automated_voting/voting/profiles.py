@@ -1,8 +1,9 @@
-from numpy import random, array, zeros, flatnonzero, genfromtxt
+from numpy import random, array, zeros, flatnonzero, genfromtxt, array_equal
 from pandas import DataFrame
 import svvamp as sv
 from whalrus.profile.Profile import Profile
 from whalrus.rule.RuleCondorcet import RuleCondorcet
+from tqdm import tqdm
 
 class AVProfile(Profile):
     def __init__(self, n_voters, origin="distribution", params="spheroid", candidates=None):
@@ -162,7 +163,7 @@ class AVProfile(Profile):
             - Reshape to (n_features, 1) for tensor input, then transpose to make it n_features columns,
                where n_features = n_candidates**2 """
 
-        if not rank_matrix:
+        if rank_matrix is None:
             return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
         else:
             return rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
@@ -310,6 +311,8 @@ class AVProfile(Profile):
     def create_IM(self, count=5) -> dict:
         IM_dict = dict()
         for possible_winner in range(self.n_candidates):
+            # print(f"Generating alternative IM profiles for candidate {self.candidates[possible_winner]}...")
+
             self._IM_pairs_set = set()
             IM_dict[possible_winner] = self.generate_IM_profiles(possible_winner, count)
 
@@ -325,7 +328,9 @@ class AVProfile(Profile):
                 if len(self._IM_pairs_set) >= (self.n_candidates-1)*(self.n_candidates) - 2:
                     return IM_profiles
 
-                IM_profiles.append(self.generate_IM_rank_matrix(alt_candidate, winner_idx))
+                IM_profile = self.generate_IM_rank_matrix(alt_candidate, winner_idx)
+                if not array_equal(IM_profile, self._rank_matrix):
+                    IM_profiles.append(IM_profile)
 
         return IM_profiles
 
@@ -386,18 +391,24 @@ class AVProfile(Profile):
         # Possible alteration 3:
         # Any option from before BUT now, rank 1 is also in play
 
+        i = 0
         # Make sure these choices aren't already chosen - if they are in our set of existing (rank, candidate) pairs, choose again
         while (candidate_down_rank, candidate_down) in self._IM_pairs_set:
             # print(f"Found existing down pair {(candidate_down_rank, candidate_down)} in the set. Choosing again")
             random.seed(random.choice(range(1000000)))
             candidate_down_rank = random.choice(possible_ranks)
             candidate_down = random.choice(possible_candidates)
+            i += 1
+            if i == 100:
+                print("Couldn't find another rank_down/candidate_down combo!")
+                return new_rank_matrix
             # print(f"New pair of choice {(candidate_down_rank, candidate_down)}")
             # print(f"Length of pair set: {len(self._IM_pairs_set)}")
             # print()
 
         self._IM_pairs_set.add((candidate_down_rank, candidate_down))
         # print("---------------")
+        i = 0
         while (candidate_up_rank, candidate_up) in self._IM_pairs_set:
             # print(f"Found existing up pair {(candidate_up_rank, candidate_up)} in the set. Choosing again")
             random.seed(random.choice(range(1000000)))
@@ -406,6 +417,10 @@ class AVProfile(Profile):
             # print(f"Found existing up pair {(candidate_up_rank, candidate_up)} in the set. Choosing again")
             # print(f"Length of pair set: {len(self._IM_pairs_set)}")
             # print()
+            i += 1
+            if i == 100:
+                print("Couldn't find another rank_up/candidate_up combo!")
+                return new_rank_matrix
 
         self._IM_pairs_set.add((candidate_up_rank, candidate_up))
 
@@ -420,6 +435,14 @@ class AVProfile(Profile):
 
     def generate_IIA_profiles(self, count) -> array:
         return array
+
+
+def generate_profile_dataset(num_profiles, n_voters, candidates):
+    dataset = []
+    print("Generating dataset...")
+    for i in tqdm(range(num_profiles)):
+        dataset.append(AVProfile(n_voters, origin="distribution", params="spheroid", candidates=candidates))
+    return dataset
 
 def test():
     pass
