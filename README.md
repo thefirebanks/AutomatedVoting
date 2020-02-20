@@ -3,13 +3,22 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 
 ## Next steps
 
-- [x] Compile model, training and loss into a class
-- [x] Write simulator generator for IM matrices
-- [x] Allow for multiple forward passes to happen in the loss function for simulators
-- [x] Add IM component to loss
+- [x] Come up with evaluation metric
+    - Possible ideas: for every constraint, consistency of predictions
+    - Associate a unit of utility to each preference? Depending on the rank, and see how much utility is being maximized?
+- [x] Write code to run existing voting schemes on existing profiles - create a baseline
+- [x] Write code for storing generated datasets
+- [ ] Extra: See if we can improve manipulation generated profiles 
+- [x] Run code to generate datasets using as many possible different distributions 
+- [ ] Extend network complexity and write down parameters to improve
+- [ ] Run network and existing methods on pregenerated data 
+
 
 ## TODO 
 
+0. General
+    - [ ] Evaluation metric
+   
 1. Voting
     - [x] Profile generator
     - [x] Universal input preprocessing (make sure matrix is properly transposed)
@@ -34,7 +43,7 @@ Automatic design of voting rules using neural networks and the genetic algorithm
     - [x] Condorcet/Majority/Plurality winners vs true winners
     - [x] IM: ratio of predicted candidates to true winner
     - [ ] IM: number of simulations per profile vs performance 
-    - [ ] IIA: ratio of 
+    - [ ] IIA: number of times winner changed / number of changes
 
 4. Genetic Algorithm
     - [x] Basic implementation 

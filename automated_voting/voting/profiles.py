@@ -3,6 +3,7 @@ from pandas import DataFrame
 import svvamp as sv
 from whalrus.profile.Profile import Profile
 from whalrus.rule.RuleCondorcet import RuleCondorcet
+import pickle
 from tqdm import tqdm
 
 class AVProfile(Profile):
@@ -400,7 +401,7 @@ class AVProfile(Profile):
             candidate_down = random.choice(possible_candidates)
             i += 1
             if i == 100:
-                print("Couldn't find another rank_down/candidate_down combo!")
+                # print("Couldn't find another rank_down/candidate_down combo!")
                 return new_rank_matrix
             # print(f"New pair of choice {(candidate_down_rank, candidate_down)}")
             # print(f"Length of pair set: {len(self._IM_pairs_set)}")
@@ -437,15 +438,43 @@ class AVProfile(Profile):
         return array
 
 
-def generate_profile_dataset(num_profiles, n_voters, candidates):
+def generate_profile_dataset(num_profiles, n_voters, candidates, origin="distribution", params="spheroid"):
     dataset = []
     print("Generating dataset...")
     for i in tqdm(range(num_profiles)):
-        dataset.append(AVProfile(n_voters, origin="distribution", params="spheroid", candidates=candidates))
+        dataset.append(AVProfile(n_voters, origin=origin, params=params, candidates=candidates))
     return dataset
 
+
+def store_dataset(dataset, n_candidates, n_voters, n_profiles, distr_name):
+    with open(f"{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles", "wb") as fp:
+        pickle.dump(dataset, fp)
+        print(f"Stored: {distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles")
+
+
+def load_dataset(file_name):
+    with open(file_name, "wb") as fp:
+        pickled_dataset = pickle.load(fp)
+
+    print(f"Loaded: {file_name}")
+
+    return pickled_dataset
+
 def test():
-    pass
+    n_profiles = 100
+    n_voters = 500
+    candidates = ["Austin", "Brad", "Chad", "Derek", "Ethan"]
+    n_candidates = len(candidates)
+    distributions = ["spheroid", "cubic", "euclidean", "gaussian", "ladder"]
+
+    for distribution in distributions:
+        print("==========================================")
+        print(f"\nGenerating {distribution} dataset...\n")
+        print("==========================================")
+        dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution)
+        store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
+
+
     # _ = AVProfile(5, origin="distribution",
     #               params="spheroid", candidates=["Adam", "Bert", "Chad"])
 
