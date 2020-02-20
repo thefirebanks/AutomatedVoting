@@ -56,6 +56,16 @@ class AVProfile(Profile):
         self._n_candidates = len(self._labels_candidates)
         self._n_voters = n_voters
 
+
+        # TODO: This could be the same array, technically!!!!!! Depending on the profile generation method
+        # Get a list of possible candidates whose score we can increase, that are not the winner or the wanted candidate
+        self.all_candidates_idx = [i for i in range(self.n_candidates)]
+        # possible_candidates = [i for i in range(self.n_candidates) if i != winner_idx and i != wanted_idx]
+
+        # Get possible ranks to increase/decrease
+        self.all_ranks = [i for i in range(self.n_candidates)]
+        # possible_ranks = [i for i in range(1, self.n_candidates)]
+
         # Create a dataframe representation of the profile so we can print it out
         self._rank_matrix = self.to_count_matrix()
         self._tournament_matrix = self.to_tournament_matrix()
@@ -311,6 +321,7 @@ class AVProfile(Profile):
 
     def create_IM(self, count=5) -> dict:
         IM_dict = dict()
+
         for possible_winner in range(self.n_candidates):
             # print(f"Generating alternative IM profiles for candidate {self.candidates[possible_winner]}...")
 
@@ -335,7 +346,42 @@ class AVProfile(Profile):
 
         return IM_profiles
 
-    def generate_IM_rank_matrix(self, wanted_idx, winner_idx, option=1) -> array:
+    def generate_IM_rank_matrix(self, wanted_idx, winner_idx):
+
+        # Deep copy the rank matrix to avoid modifying the original one
+        new_rank_matrix = self.rank_matrix.copy()
+        option, i = 1, 0
+
+        while True:
+            random.seed(random.choice(range(9999)))
+
+            # Generate rank/candidate_idx pairs to modify the rank matrix
+            (candidate_down_rank, candidate_down), (candidate_up_rank, candidate_up) = \
+                self.generate_IM_rank_pairs(wanted_idx, winner_idx, option=option)
+
+            # If we have found a good alternative profile, great! Else we just keep looking for one
+            if (candidate_down_rank, candidate_down) not in self._IM_pairs_set and (candidate_up_rank, candidate_up) not in self._IM_pairs_set:
+                self._IM_pairs_set.add((candidate_down_rank, candidate_down))
+                self._IM_pairs_set.add((candidate_up_rank, candidate_up))
+                break
+
+            # This is to make sure we don't loop forever if we run out of alternative profiles to generate
+            i += 1
+            if i % 50 == 0:
+                option += 1
+            if option > 3:
+                return new_rank_matrix
+
+        # Perform operations
+        new_rank_matrix[candidate_up_rank, candidate_up] -= 1
+        new_rank_matrix[candidate_down_rank, candidate_down] -= 1
+
+        new_rank_matrix[candidate_up_rank, candidate_down] += 1
+        new_rank_matrix[candidate_down_rank, candidate_up] += 1
+
+        return new_rank_matrix
+
+    def generate_IM_rank_pairs(self, wanted_idx, winner_idx, option=1) -> (tuple, tuple):
         """ Given a winner candidate, and a wanted candidate != winner candidate for a particular voter,
             return an alternative rank_matrix reflecting a non-truthful ballot from that voter
 
@@ -350,89 +396,32 @@ class AVProfile(Profile):
         # TODO: DEAL WITH ZEROS IN THE MATRIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!! So we don't end up with negative ranks
         # TODO Maybe after a certain number of iterations, if we see that the length of set pair does not change, we break!
 
+        # Choose random non-winner/non-wanted candidates to alter their rank - Make sure we don't choose the same candidate
+        candidate_down = random.choice(self.all_candidates_idx)
+        candidate_up = random.choice(self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
 
-        # Deep copy the rank matrix to avoid modifying the original one
-        new_rank_matrix = self.rank_matrix.copy()
+        # Get the random ranks to modify scores from - Also make sure we don't choose the same number
+        candidate_down_rank = random.choice(self.all_ranks)
+        candidate_up_rank = random.choice(self.all_ranks[:candidate_down_rank] + self.all_ranks[candidate_down_rank + 1:])
 
-        # Get a list of possible candidates whose score we can increase, that are not the winner or the wanted candidate
-        possible_candidates = [i for i in range(self.n_candidates) if i != winner_idx and i != wanted_idx]
-
-        # Get possible ranks to increase/decrease
-        possible_ranks = [i for i in range(1, self.n_candidates)]
-
-        # Choose random non-winner/non-wanted candidates to alter their rank
-        candidate_down = random.choice(possible_candidates)
-        candidate_up = random.choice(possible_candidates)
-
-        # Get the random ranks to modify scores from
-        candidate_down_rank = random.choice(possible_ranks)
-        candidate_up_rank = random.choice(possible_ranks)
-
+        # Exclude candidate W from the list of candidates going up
         if option == 1:
-            # Possible alteration 1: For n_candidates >= 3.
-            # Swap the position of a non-winner and non-wanted candidate with the winner candidate on a given ballot
-            # Say we have an honest ballot Bert -> Chad -> Adam
-            # We want to transform it into Bert -> Adam -> Chad
+            # C > O_1 > O_2 > W ===> C > O_2 > O_1 > W
+            candidate_up = random.choice(self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
+            candidate_down = random.choice(self.all_candidates_idx[:candidate_up] + self.all_candidates_idx[candidate_up + 1:])
 
-            # We are decreasing the winner's score
-            candidate_down = winner_idx
-
+        # Select candidate W to go down
         elif option == 2:
-            # Possible alteration 2:
-            # We could include the winner as part of the leftover candidates maybe?
-            # We can also include another candidate that is not the winner to decrease its score
+            # C > W > O ===> C > O > W
+            candidate_down = winner_idx
+            candidate_up = random.choice(self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
 
-            # Add the winner to be included in the list of candidates whose score we will increase
-            possible_candidates.append(winner_idx)
+        # Exclude candidate C from the list of candidates going down
+        elif option == 3:
+            candidate_down = random.choice(self.all_candidates_idx[:wanted_idx] + self.all_candidates_idx[wanted_idx + 1:])
+            candidate_up = random.choice(self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
 
-            # Choose a candidate whose score we will increase
-            candidate_up = random.choice(possible_candidates)
-
-        #     elif option == 3:
-        # Possible alteration 3:
-        # Any option from before BUT now, rank 1 is also in play
-
-        i = 0
-        # Make sure these choices aren't already chosen - if they are in our set of existing (rank, candidate) pairs, choose again
-        while (candidate_down_rank, candidate_down) in self._IM_pairs_set:
-            # print(f"Found existing down pair {(candidate_down_rank, candidate_down)} in the set. Choosing again")
-            random.seed(random.choice(range(1000000)))
-            candidate_down_rank = random.choice(possible_ranks)
-            candidate_down = random.choice(possible_candidates)
-            i += 1
-            if i == 100:
-                # print("Couldn't find another rank_down/candidate_down combo!")
-                return new_rank_matrix
-            # print(f"New pair of choice {(candidate_down_rank, candidate_down)}")
-            # print(f"Length of pair set: {len(self._IM_pairs_set)}")
-            # print()
-
-        self._IM_pairs_set.add((candidate_down_rank, candidate_down))
-        # print("---------------")
-        i = 0
-        while (candidate_up_rank, candidate_up) in self._IM_pairs_set:
-            # print(f"Found existing up pair {(candidate_up_rank, candidate_up)} in the set. Choosing again")
-            random.seed(random.choice(range(1000000)))
-            candidate_up_rank = random.choice(possible_ranks)
-            candidate_up = random.choice(possible_candidates)
-            # print(f"Found existing up pair {(candidate_up_rank, candidate_up)} in the set. Choosing again")
-            # print(f"Length of pair set: {len(self._IM_pairs_set)}")
-            # print()
-            i += 1
-            if i == 100:
-                print("Couldn't find another rank_up/candidate_up combo!")
-                return new_rank_matrix
-
-        self._IM_pairs_set.add((candidate_up_rank, candidate_up))
-
-        # Perform operations
-        new_rank_matrix[candidate_up_rank, candidate_up] -= 1
-        new_rank_matrix[candidate_down_rank, candidate_down] -= 1
-
-        new_rank_matrix[candidate_up_rank, candidate_down] += 1
-        new_rank_matrix[candidate_down_rank, candidate_up] += 1
-
-        return new_rank_matrix
+        return (candidate_down_rank, candidate_down), (candidate_up_rank, candidate_up)
 
     def generate_IIA_profiles(self, count) -> array:
         return array

@@ -44,6 +44,9 @@ Automatic design of voting rules using neural networks and the genetic algorithm
     - [x] IM: ratio of predicted candidates to true winner
     - [ ] IM: number of simulations per profile vs performance 
     - [ ] IIA: number of times winner changed / number of changes
+    - [ ] Different optimizers (SGD, Adam, Adagrad)
+    - [ ] Different architectures (Choose 3?)
+    - [ ] Compare against tournament/round based solutions (i.e IRV)
 
 4. Genetic Algorithm
     - [x] Basic implementation 

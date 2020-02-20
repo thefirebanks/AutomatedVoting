@@ -224,7 +224,8 @@ def run_baselines(profiles, rules, rule_names, *args):
 
     rules_dict = dict()
 
-    # TODO - how do we create new profiles using the manipulated ballots?
+    # TODO - how do we create new profiles using the manipulated ballots? Do we need to?
+    # TODO - Only uses rules that are not already being evaluated within the network! (Condorcet, Borda, etc)
     for profile in profiles:
         for i, rule in enumerate(rules):
             rules_dict[rule_names[i]] = dict()
