@@ -1,10 +1,53 @@
 from numpy import random, array, zeros, flatnonzero, genfromtxt, array_equal
 from pandas import DataFrame
-import svvamp as sv
+from svvamp import PopulationCubicUniform, PopulationEuclideanBox, PopulationGaussianWell, \
+    PopulationLadder, PopulationVMFHypercircle, PopulationVMFHypersphere, PopulationSpheroid
 from whalrus.profile.Profile import Profile
 from whalrus.rule.RuleCondorcet import RuleCondorcet
-import pickle
+# from whalrus.rule.RuleBorda import RuleBorda
+from pickle import dump, load
 from tqdm import tqdm
+from whalrus.ballot.BallotOrder import BallotOrder
+import argparse
+
+parser = argparse.ArgumentParser(description='Define parameters for generation of Profile datasets')
+
+parser.add_argument('-p', '--n_profiles', metavar='profiles', type=int,
+                        required=True,
+                        help='Number of profiles')
+
+parser.add_argument('-c', '--n_candidates', metavar='candidates', type=int,
+                        required=True,
+                        help='Number of candidates')
+
+parser.add_argument('-v', '--n_voters', metavar='voters', type=int,
+                        required=True,
+                        help='Number of voters')
+
+parser.add_argument('-d', '--distribution', metavar='dists', type=str,
+                        default="spheroid",
+                        help='Name of distribution if we only want to generate data from one distribution. If this is the case, -nd should be set to 1')
+
+parser.add_argument('-nd', '--n_distributions', metavar='n_dists', type=int,
+                        default="1",
+                        help='Number of distributions if we want to generate dataset from multiple. Else just 1 and specify -d')
+
+
+args = parser.parse_args()
+
+
+# Add this method so that we can sort ballot objects
+def __lt__(ballot1, ballot2):
+    return list(ballot1) < list(ballot2)
+
+
+def __gt__(ballot1, ballot2):
+    return list(ballot1) > list(ballot2)
+
+
+setattr(BallotOrder, "__lt__", __lt__)
+setattr(BallotOrder, "__gt__", __gt__)
+
 
 class AVProfile(Profile):
     def __init__(self, n_voters, origin="distribution", params="spheroid", candidates=None):
@@ -20,27 +63,27 @@ class AVProfile(Profile):
 
             # Create a population object
             if params == "cubic":
-                pop = sv.PopulationCubicUniform(V=n_voters, C=len(candidates))
+                pop = PopulationCubicUniform(V=n_voters, C=len(candidates))
             elif params == "euclidean":
-                pop = sv.PopulationEuclideanBox(V=n_voters, C=len(candidates), box_dimensions=[1])
+                pop = PopulationEuclideanBox(V=n_voters, C=len(candidates), box_dimensions=[1])
             elif params == "gaussian":
-                pop = sv.PopulationGaussianWell(V=n_voters, C=len(candidates), sigma=[1], shift=[10])
+                pop = PopulationGaussianWell(V=n_voters, C=len(candidates), sigma=[1], shift=[10])
             elif params == "ladder":
-                pop = sv.PopulationLadder(V=n_voters, C=len(candidates), n_rungs=5)
+                pop = PopulationLadder(V=n_voters, C=len(candidates), n_rungs=5)
             elif params == "VMFHypercircle":
-                pop = sv.PopulationVMFHypercircle(V=n_voters, C=len(candidates), vmf_concentration=[10],
-                                                  vmf_pole=random.random_integers(0, len(candidates),
-                                                                                  len(candidates)))
+                pop = PopulationVMFHypercircle(V=n_voters, C=len(candidates), vmf_concentration=[10],
+                                               vmf_pole=random.random_integers(0, len(candidates),
+                                                                               len(candidates)))
             elif params == "VMFHypersphere":
-                pop = sv.PopulationVMFHypersphere(V=n_voters, C=len(candidates),
-                                                  vmf_concentration=[50, 50],
-                                                  vmf_probability=None,
-                                                  vmf_pole=[
-                                                      random.random_integers(0, len(candidates), len(candidates)),
-                                                      random.random_integers(0, len(candidates), len(candidates))],
-                                                  stretching=1)
+                pop = PopulationVMFHypersphere(V=n_voters, C=len(candidates),
+                                               vmf_concentration=[50, 50],
+                                               vmf_probability=None,
+                                               vmf_pole=[
+                                                   random.random_integers(0, len(candidates), len(candidates)),
+                                                   random.random_integers(0, len(candidates), len(candidates))],
+                                               stretching=1)
             else:
-                pop = sv.PopulationSpheroid(V=n_voters, C=len(candidates))
+                pop = PopulationSpheroid(V=n_voters, C=len(candidates))
 
             self._preferences = pop.preferences_rk
             pop.labels_candidates = self._labels_candidates = candidates
@@ -55,30 +98,35 @@ class AVProfile(Profile):
         # Basic properties
         self._n_candidates = len(self._labels_candidates)
         self._n_voters = n_voters
-
+        self._candidate_map = dict(zip(self.candidates, list(range(self.n_candidates))))
 
         # TODO: This could be the same array, technically!!!!!! Depending on the profile generation method
         # Get a list of possible candidates whose score we can increase, that are not the winner or the wanted candidate
         self.all_candidates_idx = [i for i in range(self.n_candidates)]
-        # possible_candidates = [i for i in range(self.n_candidates) if i != winner_idx and i != wanted_idx]
 
         # Get possible ranks to increase/decrease
         self.all_ranks = [i for i in range(self.n_candidates)]
-        # possible_ranks = [i for i in range(1, self.n_candidates)]
 
-        # Create a dataframe representation of the profile so we can print it out
-        self._rank_matrix = self.to_count_matrix()
-        self._tournament_matrix = self.to_tournament_matrix()
-        self._df_rank = self.to_count_dataframe()
+        # Create a labeled version of the ranking from the population -> Allows us to initialize a Profile object
+        self._candidate_rank_map = self.get_candidate_rank_map()
+        self._name_ballots = self.get_named_ballots()
+        self._idx_ballots = [[self.candidate_map[c] for c in ballot] for ballot in self._name_ballots]
 
-        # Create a labeled version of the ranking from the population
-        self._profile_dicts, self._labeled_ranks = self.label_profile()
+        # Create a profile object - automatically creates ordered ballots
+        super().__init__(self._name_ballots)
+
+        # Sort everything we have so far for ease of index accesing
+        #         self.ballots.sort()
+        #         self._name_ballots.sort()
 
         # Create a dataframe of ballots and how many people voted for them
         self._ballot_df = self.to_ballot_dataframe()
 
-        # Create a profile object - automatically creates ordered ballots
-        super().__init__(self._labeled_ranks)
+        # TODO: Modify all of these so that they use BALLOTS instead of preferences
+        # Create a dataframe representation of the profile so we can print it out
+        self._rank_matrix = self.to_count_matrix()
+        self._rank_df = self.to_count_dataframe()
+        # self._tournament_matrix = self.to_tournament_matrix()
 
         # Create one-hot vectors of established candidates (Condorcet, Majority, etc.)
         self._condorcet_w, self._condorcet_w_vector = self.get_condorcet()
@@ -88,8 +136,12 @@ class AVProfile(Profile):
         # Extra variable to keep track of IM modified profiles - A set of tuples
         self._IM_pairs_set = set()
 
-        # Create a sample of simulated1 profiles for IM
-        self._IM_profiles = self.create_IM()
+        # Extra variable to keep track of whether we have repeated matrices within the simulations
+        self._repeated_rank_matrices = 0
+
+        # Create a sample of simulated profiles for IM
+        # TODO This could be simply the list of ballots and we update rank matrix later!!!!!!!!!!!
+        self._IM_rank_matrices, self._IM_ballots = self.create_IM()
 
         # Create a sample of simulated profiles for IIA
         # self._IIA_profiles = self.create_IIA_dict()
@@ -100,6 +152,10 @@ class AVProfile(Profile):
         return self._n_candidates
 
     @property
+    def candidate_map(self):
+        return self._candidate_map
+
+    @property
     def n_voters(self):
         return self._n_voters
 
@@ -107,34 +163,40 @@ class AVProfile(Profile):
     def candidates(self):
         return self._labels_candidates
 
-    @property
-    def preferences(self):
-        return self._preferences
-
     # Ballots and Profile matrix/dataframe formats
     @property
     def rank_matrix(self):
+        self._rank_matrix = self.to_count_matrix()
         return self._rank_matrix
 
-    @property
-    def tournament_matrix(self):
-        return self._tournament_matrix
+    # @property
+    # def tournament_matrix(self):
+    #     self._tournament_matrix = self.to_tournament_matrix()
+    #     return self._tournament_matrix
 
     @property
     def rank_df(self):
-        return self._df_rank
+        self._rank_df = self.to_count_dataframe()
+        return self._rank_df
 
     # Ballot descriptors
     @property
-    def labeled_ballots(self):
-        return self._labeled_ranks
+    def name_ballots(self):
+        self._name_ballots = [list(ballot) for ballot in self.ballots]
+        return self._name_ballots
 
     @property
-    def ranked_ballots(self):
-        return self._profile_dicts
+    def idx_ballots(self):
+        self._idx_ballots = [[self.candidate_map[c] for c in ballot] for ballot in self.name_ballots]
+        return self._idx_ballots
+
+    @property
+    def ranked_ballots_map(self):
+        return self._candidate_rank_map
 
     @property
     def ballot_df(self):
+        self._ballot_df = self.to_ballot_dataframe()
         return self._ballot_df
 
     # Profile special candidates (strings and vectors
@@ -164,8 +226,12 @@ class AVProfile(Profile):
 
     # Simulated profiles for IM
     @property
-    def IM_profiles(self):
-        return self._IM_profiles
+    def IM_rank_matrices(self):
+        return self._IM_rank_matrices
+
+    @property
+    def IM_ballots(self):
+        return self._IM_ballots
 
     def flatten_rank_matrix(self, rank_matrix=None) -> array:
         """
@@ -175,9 +241,9 @@ class AVProfile(Profile):
                where n_features = n_candidates**2 """
 
         if rank_matrix is None:
-            return self.rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+            return self.rank_matrix.flatten('F').reshape(self.n_candidates * self.n_candidates, 1).T
         else:
-            return rank_matrix.flatten('F').reshape(self.n_candidates*self.n_candidates, 1).T
+            return rank_matrix.flatten('F').reshape(self.n_candidates * self.n_candidates, 1).T
 
     def get_condorcet(self) -> (str, array):
         """ Check if a profile contains a condorcet winner and returns a one-hot vector representing them.
@@ -239,9 +305,9 @@ class AVProfile(Profile):
 
         return winner, one_hot
 
-    def label_profile(self) -> (list, list):
+    def get_candidate_rank_map(self) -> list:
         """ Convert profile to a list of {candidate: rank} per voter
-            Then return a list of labeled candidates in order of rank """
+            This method should only be used at initialization of the profile """
 
         ordered_prof = []
 
@@ -253,37 +319,41 @@ class AVProfile(Profile):
             ordered_prof.append(ordered_ballot)
 
         sorted_dicts = [dict(sorted(profile.items(), key=lambda kv: kv[1])) for profile in ordered_prof]
-        sorted_dict_keys = [list(d.keys()) for d in sorted_dicts]
 
-        return sorted_dicts, sorted_dict_keys
+        return sorted_dicts
 
-    def to_tournament_matrix(self) -> array:
-        return array([])
+    def get_named_ballots(self) -> list:
+        return [list(m.keys()) for m in self._candidate_rank_map]
+
+    # def to_tournament_matrix(self) -> array:
+    #     return array([])
 
     def to_count_matrix(self) -> array:
         """ Create a matrix representation of the profile,
         where matrix[c][r] represent the frequency of candidate c in rank r """
 
-        matrix_rank = [[0] * len(self._preferences[0]) for _ in self._preferences[0]]
+        self._idx_ballots = [[self.candidate_map[c] for c in ballot] for ballot in self.name_ballots]
 
-        for ballot in self._preferences:
-            for j, rank in enumerate(ballot):
-                matrix_rank[j][rank] += 1
+        matrix_rank = [[0] * len(self._idx_ballots[0]) for _ in self._idx_ballots[0]]
+
+        for ballot in self._idx_ballots:
+            for candidate, rank in enumerate(ballot):
+                matrix_rank[candidate][rank] += 1
 
         return array(matrix_rank).T
 
     def to_count_dataframe(self) -> DataFrame:
         """ Creates a dataframe representation of the profile from the matrix representation """
         data_dict = dict()
+        self._rank_matrix = self.to_count_matrix()
 
         # Create dictionary for dataframe
-        # data_dict["Candidates"] = self._labels_candidates
         for i in range(len(self._rank_matrix)):
             data_dict[f"Rank {i + 1}"] = self._rank_matrix[:, i]
 
         df = DataFrame(data_dict, index=self.candidates)
 
-        return df.T
+        return df
 
     def to_ballot_dataframe(self) -> DataFrame:
         """ Creates a dataframe where the columns represent the ballots and the top row represents
@@ -291,8 +361,8 @@ class AVProfile(Profile):
 
         # {Ballot: # of people that have it}
         ballot_counts = dict()
-        for ballot in self.preferences:
-            ballot_str = str(ballot)
+        for ballot in self.name_ballots:
+            ballot_str = tuple(ballot)
             if ballot_str in ballot_counts:
                 ballot_counts[ballot_str] += 1
             else:
@@ -306,12 +376,7 @@ class AVProfile(Profile):
         for ballot, count in ballot_counts.items():
             # The count will be the header
             header.append(count)
-
-            # Turn back into a list so the candidates occupy different cells
-            ballot_list = ballot.replace('[', '').replace(']', '').split()
-
-            # Transform numbers into names
-            rows.append([self.candidates[int(index)] for index in ballot_list])
+            rows.append(ballot)
 
         # We will transpose the rows to format ballots properly
         columns = array(rows).T
@@ -319,37 +384,69 @@ class AVProfile(Profile):
 
         return df
 
-    def create_IM(self, count=5) -> dict:
-        IM_dict = dict()
+    def update_ballots(self, c_down, c_up, c_down_rank, c_up_rank):
+        """
+        Given two candidates c_down, c_up and two ranks c_down_rank, c_up_rank, we want to find the first ballot
+        that has c_down in c_down rank and c_up in c_up_rank, and switch them. This will update the list of ballots
+        with a new BallotOrder object.
+        """
+        self._name_ballots = [list(ballot) for ballot in self.ballots]
+        new_ballots = [ballot for ballot in self.ballots]
+        c_down, c_up = self.candidates[c_down], self.candidates[c_up]
+
+        # For every ballot that we have, check if it is in the ordering that we want
+        for i in range(len(self._name_ballots)):
+
+            if self._candidate_rank_map[i][c_up] == c_up_rank and self._candidate_rank_map[i][c_down] == c_down_rank:
+                new_ballot_l = [c for c in self._name_ballots[i]]
+
+                # Swap candidates at a given position
+                new_ballot_l[c_up_rank], new_ballot_l[c_down_rank] = c_down, c_up
+
+                # Create a new ballotorder obj and replace!
+                new_ballots[i] = BallotOrder(new_ballot_l)
+                break
+
+        return new_ballots
+
+    def create_IM(self, count=15) -> (dict, dict):
+        IM_rank_matrices = dict()
+        IM_ballots = dict()
 
         for possible_winner in range(self.n_candidates):
             # print(f"Generating alternative IM profiles for candidate {self.candidates[possible_winner]}...")
 
             self._IM_pairs_set = set()
-            IM_dict[possible_winner] = self.generate_IM_profiles(possible_winner, count)
+            IM_rank_matrices[possible_winner], IM_ballots[possible_winner] = self.generate_IM_profiles(possible_winner,
+                                                                                                       count)
 
-        return IM_dict
+        return IM_rank_matrices, IM_ballots
 
-    def generate_IM_profiles(self, winner_idx, count) -> list:
-        IM_profiles = []
+    def generate_IM_profiles(self, winner_idx, count) -> (list, list):
+        IM_rank_matrices = []
+        IM_ballots = []
+
         wanted_candidates = [i for i in range(self.n_candidates) if i != winner_idx]
+        self._rank_matrix = self.to_count_matrix()
 
-        for i in range(count):
-            for alt_candidate in wanted_candidates:
+        for alt_candidate in wanted_candidates:
+            for i in range(count):
                 # TODO If we have exhausted possibilities, we should change our option - for now we will return
-                if len(self._IM_pairs_set) >= (self.n_candidates-1)*(self.n_candidates) - 2:
-                    return IM_profiles
+                # if len(self._IM_pairs_set) >= (self.n_candidates-1)*(self.n_candidates) - 2:
+                #     return IM_profiles
 
-                IM_profile = self.generate_IM_rank_matrix(alt_candidate, winner_idx)
+                IM_profile, c_up, c_up_rank, c_down, c_down_rank = self.generate_IM_rank_matrix(alt_candidate,
+                                                                                                winner_idx)
                 if not array_equal(IM_profile, self._rank_matrix):
-                    IM_profiles.append(IM_profile)
+                    IM_rank_matrices.append(IM_profile)
+                    IM_ballots.append(self.update_ballots(c_down, c_up, c_down_rank, c_up_rank))
 
-        return IM_profiles
+        return IM_rank_matrices, IM_ballots
 
     def generate_IM_rank_matrix(self, wanted_idx, winner_idx):
 
         # Deep copy the rank matrix to avoid modifying the original one
-        new_rank_matrix = self.rank_matrix.copy()
+        new_rank_matrix = self._rank_matrix.copy()
         option, i = 1, 0
 
         while True:
@@ -359,8 +456,10 @@ class AVProfile(Profile):
             (candidate_down_rank, candidate_down), (candidate_up_rank, candidate_up) = \
                 self.generate_IM_rank_pairs(wanted_idx, winner_idx, option=option)
 
+            # TODO: We may have the same candidate_down, rank tuples as candidate up and might diminish our possibilities
             # If we have found a good alternative profile, great! Else we just keep looking for one
-            if (candidate_down_rank, candidate_down) not in self._IM_pairs_set and (candidate_up_rank, candidate_up) not in self._IM_pairs_set:
+            if (candidate_down_rank, candidate_down) not in self._IM_pairs_set and (
+                    candidate_up_rank, candidate_up) not in self._IM_pairs_set:
                 self._IM_pairs_set.add((candidate_down_rank, candidate_down))
                 self._IM_pairs_set.add((candidate_up_rank, candidate_up))
                 break
@@ -370,7 +469,8 @@ class AVProfile(Profile):
             if i % 50 == 0:
                 option += 1
             if option > 3:
-                return new_rank_matrix
+                self._repeated_rank_matrices += 1
+                return new_rank_matrix, -1, -1, -1, -1
 
         # Perform operations
         new_rank_matrix[candidate_up_rank, candidate_up] -= 1
@@ -379,7 +479,7 @@ class AVProfile(Profile):
         new_rank_matrix[candidate_up_rank, candidate_down] += 1
         new_rank_matrix[candidate_down_rank, candidate_up] += 1
 
-        return new_rank_matrix
+        return new_rank_matrix, candidate_up, candidate_up_rank, candidate_down, candidate_down_rank
 
     def generate_IM_rank_pairs(self, wanted_idx, winner_idx, option=1) -> (tuple, tuple):
         """ Given a winner candidate, and a wanted candidate != winner candidate for a particular voter,
@@ -398,28 +498,35 @@ class AVProfile(Profile):
 
         # Choose random non-winner/non-wanted candidates to alter their rank - Make sure we don't choose the same candidate
         candidate_down = random.choice(self.all_candidates_idx)
-        candidate_up = random.choice(self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
+        candidate_up = random.choice(
+            self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
 
         # Get the random ranks to modify scores from - Also make sure we don't choose the same number
         candidate_down_rank = random.choice(self.all_ranks)
-        candidate_up_rank = random.choice(self.all_ranks[:candidate_down_rank] + self.all_ranks[candidate_down_rank + 1:])
+        candidate_up_rank = random.choice(
+            self.all_ranks[:candidate_down_rank] + self.all_ranks[candidate_down_rank + 1:])
 
         # Exclude candidate W from the list of candidates going up
         if option == 1:
             # C > O_1 > O_2 > W ===> C > O_2 > O_1 > W
-            candidate_up = random.choice(self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
-            candidate_down = random.choice(self.all_candidates_idx[:candidate_up] + self.all_candidates_idx[candidate_up + 1:])
+            candidate_up = random.choice(
+                self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
+            candidate_down = random.choice(
+                self.all_candidates_idx[:candidate_up] + self.all_candidates_idx[candidate_up + 1:])
 
         # Select candidate W to go down
         elif option == 2:
             # C > W > O ===> C > O > W
             candidate_down = winner_idx
-            candidate_up = random.choice(self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
+            candidate_up = random.choice(
+                self.all_candidates_idx[:winner_idx] + self.all_candidates_idx[winner_idx + 1:])
 
         # Exclude candidate C from the list of candidates going down
         elif option == 3:
-            candidate_down = random.choice(self.all_candidates_idx[:wanted_idx] + self.all_candidates_idx[wanted_idx + 1:])
-            candidate_up = random.choice(self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
+            candidate_down = random.choice(
+                self.all_candidates_idx[:wanted_idx] + self.all_candidates_idx[wanted_idx + 1:])
+            candidate_up = random.choice(
+                self.all_candidates_idx[:candidate_down] + self.all_candidates_idx[candidate_down + 1:])
 
         return (candidate_down_rank, candidate_down), (candidate_up_rank, candidate_up)
 
@@ -429,6 +536,7 @@ class AVProfile(Profile):
 
 def generate_profile_dataset(num_profiles, n_voters, candidates, origin="distribution", params="spheroid"):
     dataset = []
+
     print("Generating dataset...")
     for i in tqdm(range(num_profiles)):
         dataset.append(AVProfile(n_voters, origin=origin, params=params, candidates=candidates))
@@ -437,42 +545,48 @@ def generate_profile_dataset(num_profiles, n_voters, candidates, origin="distrib
 
 def store_dataset(dataset, n_candidates, n_voters, n_profiles, distr_name):
     with open(f"{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles", "wb") as fp:
-        pickle.dump(dataset, fp)
+        dump(dataset, fp)
         print(f"Stored: {distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles")
 
 
 def load_dataset(file_name):
-    with open(file_name, "wb") as fp:
-        pickled_dataset = pickle.load(fp)
+    with open(file_name, "rb") as rf:
+        pickled_dataset = load(rf)
 
     print(f"Loaded: {file_name}")
 
     return pickled_dataset
 
-def test():
-    n_profiles = 100
-    n_voters = 500
-    candidates = ["Austin", "Brad", "Chad", "Derek", "Ethan"]
-    n_candidates = len(candidates)
-    distributions = ["spheroid", "cubic", "euclidean", "gaussian", "ladder"]
+def main():
 
-    for distribution in distributions:
+    candidates = ["Austin", "Brock", "Chad", "Derek", "Ethan", "Gabe", "Jack", "Liam", "Mike", "Tyler"]
+    distributions = ["spheroid", "cubic", "euclidean", "gaussian", "ladder", "VMFHypercircle", "VMFHypersphere"]
+
+    n_profiles = args.n_profiles
+    n_voters = args.n_voters
+    n_candidates = args.n_candidates
+    candidates = candidates[:n_candidates]
+    n_dists = args.n_distributions
+
+    if n_dists == 1:
+        dists = args.distribution
+    else:
+        dists = distributions[:n_dists]
+
+    for distribution in dists:
         print("==========================================")
         print(f"\nGenerating {distribution} dataset...\n")
         print("==========================================")
         dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution)
         store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
+        print()
 
-
-    # _ = AVProfile(5, origin="distribution",
+    # profile = AVProfile(5, origin="distribution",
     #               params="spheroid", candidates=["Adam", "Bert", "Chad"])
 
-    # _ = AVProfile(20, origin="distribution",
-    #               params="spheroid", candidates=["Adam", "Bert",
-    #                                              "Chad", "Dean", "Elon"])
-
-    # dataset = generate_profile_dataset(10, 500, ["Adam", "Bert", "Chad", "Dean", "Elon"])
+    # dataset = generate_profile_dataset(50, 10, ["Austin", "Brad", "Chad"], "distribution", "gaussian")
+    # store_dataset(dataset, 3, 10, 50, "gaussian")
 
 
 if __name__ == "__main__":
-    test()
+    main()

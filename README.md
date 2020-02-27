@@ -3,21 +3,27 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 
 ## Next steps
 
-- [x] Come up with evaluation metric
-    - Possible ideas: for every constraint, consistency of predictions
-    - Associate a unit of utility to each preference? Depending on the rank, and see how much utility is being maximized?
-- [x] Write code to run existing voting schemes on existing profiles - create a baseline
-- [x] Write code for storing generated datasets
-- [ ] Extra: See if we can improve manipulation generated profiles 
-- [x] Run code to generate datasets using as many possible different distributions 
-- [ ] Extend network complexity and write down parameters to improve
-- [ ] Run network and existing methods on pregenerated data 
+- [ ] Look for papers in actual manipulation in voting - or articles?
+- [ ] Generate scenarios that allow for manipulation to happen, make existing rules to be manipulable for a good fraction of the time
+- [ ] Calibrate loss function afterwards
+- [ ] Find ways of visualizing voting rules - 2D heatmaps? look for allocation rule plots.
+- [ ] Tradeoffs: Less voters, more candidates - what leads to manipulation?
+- [ ] If possible look into CM
 
+## Thoughts to consider
+- [ ] Why did I or did I not do X in my project? Find the analog of the source of my ideas in my project. Strategy proofness, voting theory, feasibility constraints
+
+## Current experiments
+
+- Learning rate (smaller)
+- Regularization 
+    - Dividing IM by # of simulations
+    - Multiplying individual non-IM components of loss function by # of simulations?
 
 ## TODO 
 
 0. General
-    - [ ] Evaluation metric
+    - [x] Evaluation metric
    
 1. Voting
     - [x] Profile generator
@@ -46,6 +52,8 @@ Automatic design of voting rules using neural networks and the genetic algorithm
     - [ ] IIA: number of times winner changed / number of changes
     - [ ] Different optimizers (SGD, Adam, Adagrad)
     - [ ] Different architectures (Choose 3?)
+    - [ ] Compare different start names 
+    - [ ] Comparel earning over time
     - [ ] Compare against tournament/round based solutions (i.e IRV)
 
 4. Genetic Algorithm

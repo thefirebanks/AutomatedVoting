@@ -3,7 +3,7 @@ sys.path.append("../..")  # To call from the automated_voting/algorithms/ folder
 sys.path.append("..")     # To call from the automated_voting/ folder
 
 
-from automated_voting.voting.profiles import generate_profile_dataset
+from automated_voting.voting.profiles import load_dataset, AVProfile, generate_profile_dataset
 from numpy import zeros, argmax, count_nonzero
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense
@@ -14,9 +14,7 @@ from tensorflow.keras.losses import CategoricalCrossentropy
 from tensorflow import GradientTape
 # from tensorflow import convert_to_tensor
 # import tensorflow.keras.backend as kb
-# from tqdm import tqdm
 import time
-
 
 class AVNet(Model):
     def __init__(self, n_features, n_candidates, inp_shape):
@@ -36,7 +34,7 @@ class AVNet(Model):
         self.scorer = Dense(n_candidates, activation='softmax')
 
         # Define optimizer and loss function (MUST BE "GLOBAL!")
-        self.optimizer = Adam(learning_rate=0.01)
+        self.optimizer = SGD(learning_rate=0.001)
         self.CCE = CategoricalCrossentropy()
 
         # TODO: We should also store all the different values of these scores to plot overtime!!!!
@@ -110,7 +108,7 @@ class AVNet(Model):
         pred_w = self.get_winner(predictions, profile.candidates)
 
         # Simulated preferences according to the predicted winner
-        alternative_profiles = profile.IM_profiles[self.get_winner(predictions, profile.candidates, out_format="idx")]
+        alternative_profiles = profile.IM_rank_matrices[self.get_winner(predictions, profile.candidates, out_format="idx")]
         alternative_profiles = [profile.flatten_rank_matrix(alt_profile) for alt_profile in alternative_profiles]
 
         # Keep track of scores
@@ -161,6 +159,9 @@ class AVNet(Model):
             if verbose:
                 print(f"IM score: {alt_profiles_score}/{len(alternative_profiles)}")
 
+            # Regularize IM score by the number of simulated profiles
+            IM_score /= len(alternative_profiles)
+
             # If there isn't a Condorcet or a Majority winner, just use the Plurality winner
             if count_nonzero(condorcet_w_vec) == 0 and count_nonzero(majority_w_vec):
                 plurality_score = self.CCE(plurality_c, pred_c)
@@ -188,114 +189,66 @@ class AVNet(Model):
             for i in range(len(profiles)):
 
                 # Perform forward pass + calculate gradients
-                if i % 10 == 0:
+                if i % 33 == 0:
                     loss_value, grads = self.calculate_grad(profiles[i], verbose=True)
+                    print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
                 else:
                     loss_value, grads = self.calculate_grad(profiles[i])
 
-                # Print information
-                if i % 10 == 0:
-                    print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
-
                 self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
 
-            print()
+            print("\n\n")
 
+    def get_results(self):
+        print("===================================================")
+        print("Results")
+        print("---------------------------------------------------")
 
-def run_baselines(profiles, rules, rule_names, *args):
-    """ Runs the given profiles through a handful of voting rules and returns a dictionary of dictionaries,
-        indicating the name of the voting rule and the scores per each evaluation.
+        results = dict()
 
-        Parameters:
-            - profiles: list of AVProfile objects
-            - rules: list of whalrus.Rule rules to apply on those profiles
-            - *args: Any necessary extra arguments per rule
+        if self.total_condorcet != 0:
+            print(
+                f"Condorcet Score: {self.condorcet_score}/{self.total_condorcet} = {self.condorcet_score / self.total_condorcet}")
+            results["Condorcet Score"] = (f"{self.condorcet_score}/{self.total_condorcet}", self.condorcet_score / self.total_condorcet)
+        else:
+            print("No Condorcet Winners")
+            results["Condorcet Score"] = (0, 0)
 
-        Sample return: {"Borda": {"Condorcet_score": s_1, "Majority_score": s_2, "IM_score":s_3, etc.}}
+        if self.total_majority != 0:
+            print(
+                f"Majority Score: {self.majority_score}/{self.total_majority} = {self.majority_score / self.total_majority}")
+            results["Majority Score"] = (f"{self.majority_score}/{self.total_majority}", self.majority_score / self.total_majority)
+        else:
+            print("No Majority Winners")
+            results["Majority Score"] = (0, 0)
+        if self.total_plurality != 0:
+            print(
+                f"Plurality Score: {self.plurality_score}/{self.total_plurality} = {self.plurality_score / self.total_plurality}")
+            results["Plurality Score"] = (f"{self.plurality_score}/{self.total_plurality}", self.plurality_score / self.total_plurality)
+        else:
+            print("No Plurality Winners were used")
+            results["Plurality Score"] = (0, 0)
 
-        Rules used as baseline:
-            - Borda Count
-            - Condorcet winner
-            - Approval
-            - Copeland
-            - Maximin
-            - Plurality
-            - IRV? """
+        print(f"IM Score: {self.IM_score}/{self.total_IM} = {self.IM_score / self.total_IM}")
+        results["IM Score"] = (f"{self.IM_score}/{self.total_IM}", self.IM_score / self.total_IM)
 
-    rules_dict = dict()
-
-    # TODO - how do we create new profiles using the manipulated ballots? Do we need to?
-    # TODO - Only uses rules that are not already being evaluated within the network! (Condorcet, Borda, etc)
-    for profile in profiles:
-        for i, rule in enumerate(rules):
-            rules_dict[rule_names[i]] = dict()
-            r = rule(profile, *args)
-            winners = r.cowinners_
-            rules_dict[rule_names[i]]["Winners"] = winners
-            rules_dict[rule_names[i]]["Condorcet"] = 2
-            rules_dict[rule_names[i]]["Majority"] = 2
-            rules_dict[rule_names[i]]["Plurality"] = 2
-            rules_dict[rule_names[i]]["Maximin"] = 2
-            rules_dict[rule_names[i]]["Copeland"] = 2
-
-
-    return rules_dict
-
+        return results
 
 def main():
-    start_d = time.time()
 
     # Step 1: Define basic parameters
-    n_profiles = 50
-    n_voters = 500
-    candidates = ["Austin", "Brad", "Chad", "Derek", "Ethan"]
-    n_candidates = len(candidates)
+    n_candidates = 5
     n_features = n_candidates * n_candidates
 
-    print("Number of voters:", n_voters)
-    print("Number of candidates:", n_candidates)
-    print("Number of features:", n_features)
+    # Step 2: Load a dataset
+    profiles = load_dataset('../../automated_voting/voting/profile_data/spheroid_nC5_nV500_nP100.profiles')
 
-    # Step 2: Generate profiles/dataset
-    profiles = generate_profile_dataset(n_profiles, n_voters, candidates)
-
-    elapsed_d = time.time() - start_d
-    print("Data generation time:", time.strftime("%H:%M:%S", time.gmtime(elapsed_d)))
-
-    # Step 3: Run baseline models to compare later
-    # start_b = time.time()
-    #
-    # # baseline_results = run_baselines(profiles)
-    #
-    # elapsed_b = time.time() - start_b
-    # print("Train time:", time.strftime("%H:%M:%S", time.gmtime(elapsed_b)))
-
-    # Step 4: Define model and start training loop
+    # Step 3: Define model and start training loop
     start_n = time.time()
     av_model = AVNet(n_features, n_candidates, inp_shape=(1, n_features))
     av_model.train(profiles, epochs=10)
 
-    print("===================================================")
-    print("Results")
-    print("---------------------------------------------------")
-
-    if av_model.total_condorcet != 0:
-        print(
-            f"Condorcet Score: {av_model.condorcet_score}/{av_model.total_condorcet} = {av_model.condorcet_score / av_model.total_condorcet}")
-    else:
-        print("No Condorcet Winners")
-    if av_model.total_majority != 0:
-        print(
-            f"Majority Score: {av_model.majority_score}/{av_model.total_majority} = {av_model.majority_score / av_model.total_majority}")
-    else:
-        print("No Majority Winners")
-    if av_model.total_plurality != 0:
-        print(
-            f"Plurality Score: {av_model.plurality_score}/{av_model.total_plurality} = {av_model.plurality_score / av_model.total_plurality}")
-    else:
-        print("No Plurality Winners were used")
-
-    print(f"IM Score: {av_model.IM_score}/{av_model.total_IM} = {av_model.IM_score / av_model.total_IM}")
+    _ = av_model.get_results()
 
     elapsed_n = time.time() - start_n
     print("Train time:", time.strftime("%H:%M:%S", time.gmtime(elapsed_n)))
