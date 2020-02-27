@@ -5,10 +5,12 @@ Automatic design of voting rules using neural networks and the genetic algorithm
 
 - [ ] Look for papers in actual manipulation in voting - or articles?
 - [ ] Generate scenarios that allow for manipulation to happen, make existing rules to be manipulable for a good fraction of the time
+- [ ] Increase number of possible scenarios
 - [ ] Calibrate loss function afterwards
 - [ ] Find ways of visualizing voting rules - 2D heatmaps? look for allocation rule plots.
 - [ ] Tradeoffs: Less voters, more candidates - what leads to manipulation?
 - [ ] If possible look into CM
+- [ ] Extra: Is it possible to vectorize stuff?
 
 ## Thoughts to consider
 - [ ] Why did I or did I not do X in my project? Find the analog of the source of my ideas in my project. Strategy proofness, voting theory, feasibility constraints
