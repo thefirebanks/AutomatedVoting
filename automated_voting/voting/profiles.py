@@ -409,7 +409,7 @@ class AVProfile(Profile):
 
         return new_ballots
 
-    def create_IM(self, count=15) -> (dict, dict):
+    def create_IM(self, count=20) -> (dict, dict):
         IM_rank_matrices = dict()
         IM_ballots = dict()
 
@@ -537,7 +537,6 @@ class AVProfile(Profile):
 def generate_profile_dataset(num_profiles, n_voters, candidates, origin="distribution", params="spheroid"):
     dataset = []
 
-    print("Generating dataset...")
     for i in tqdm(range(num_profiles)):
         dataset.append(AVProfile(n_voters, origin=origin, params=params, candidates=candidates))
     return dataset
@@ -570,16 +569,26 @@ def main():
 
     if n_dists == 1:
         dists = args.distribution
+        if dists not in distributions:
+            raise Exception("Please enter spheroid, cubic, euclidean, gaussian, ladder, VMFHypercircle or VMFHypersphere for distribution name")
+
+        print("==========================================")
+        print(f"\nGenerating {dists} dataset...\n")
+        print("==========================================")
+        dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", dists)
+        store_dataset(dataset, n_candidates, n_voters, n_profiles, dists)
+        print()
+
     else:
         dists = distributions[:n_dists]
 
-    for distribution in dists:
-        print("==========================================")
-        print(f"\nGenerating {distribution} dataset...\n")
-        print("==========================================")
-        dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution)
-        store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
-        print()
+        for distribution in dists:
+            print("==========================================")
+            print(f"\nGenerating {distribution} dataset...\n")
+            print("==========================================")
+            dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution)
+            store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
+            print()
 
     # profile = AVProfile(5, origin="distribution",
     #               params="spheroid", candidates=["Adam", "Bert", "Chad"])
