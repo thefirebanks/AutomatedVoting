@@ -1,11 +1,20 @@
+"""
+@author: Daniel Firebanks-Quevedo
+"""
+import sys
+sys.path.append("../..")  # To call from the automated_voting/algorithms/ folder
+# sys.path.append("..")     # To call from the automated_voting/ folder
+import os
+
+
 from whalrus.rule.RuleScorePositional import RuleScorePositional
-# from autoprofiles import AVProfile
 from automated_voting.voting.constraints import check_condorcet, check_majority
+from automated_voting.voting.profiles import load_dataset, AVProfile
 
 # Basic Rules
 from whalrus.rule.RuleCopeland import RuleCopeland
 from whalrus.rule.RuleCondorcet import RuleCondorcet
-from whalrus.rule.RuleApproval import RuleApproval
+# from whalrus.rule.RuleApproval import RuleApproval
 from whalrus.rule.RuleBorda import RuleBorda
 from whalrus.rule.RulePlurality import RulePlurality
 from whalrus.rule.RuleVeto import RuleVeto
@@ -19,16 +28,16 @@ from whalrus.rule.RuleCoombs import RuleCoombs
 from whalrus.rule.RuleMaximin import RuleMaximin
 from whalrus.rule.RuleBucklinInstant import RuleBucklinInstant
 from whalrus.rule.RuleSchulze import RuleSchulze
-import sys
+
+CANDIDATES = ["Austin", "Brock", "Chad", "Derek", "Ethan", "Gabe", "Jack", "Liam", "Mike", "Tyler"]
+CANDIDATE_MAP = dict(zip(CANDIDATES, range(len(CANDIDATES))))
 
 def run_baselines(profiles):
-    all_rules = [RuleBorda, RuleMaximin, RuleCopeland, RuleCondorcet,  RulePlurality]
-    # RuleApproval, RuleVeto, RuleIRV, RulePlurality, RuleVeto,
-    # RuleNanson, RuleCoombs, RuleBucklinInstant, RuleSchulze]
+    all_rules = [RuleBorda, RuleMaximin, RuleCopeland, RuleCondorcet,  RulePlurality, RuleSchulze, RuleBucklinInstant, RuleVeto]
+                 #RuleIRV, RuleNanson, RuleCoombs,
 
-    all_names = ["RuleBorda", "RuleApproval", "RuleMaximin", "RuleCopeland", "RuleCondorcet"]
-    # "RuleApproval", "RuleVeto", "RuleIRV", "RulePlurality", "RuleVeto", "RuleNanson",
-    # "RuleCoombs", "RuleBucklinInstant", "RuleSchulze"]
+    all_names = ["RuleBorda", "RuleMaximin", "RuleCopeland", "RuleCondorcet", "RulePlurality", "RuleSchulze", "RuleBucklinInstant", "RuleVeto"]
+                 #"RuleIRV", "RuleNanson", "RuleCoombs", "RuleSchulze", "RuleBucklinInstant", "RuleVeto"]
 
     baseline_results = evaluate_baselines(profiles, all_rules, all_names)
 
@@ -56,31 +65,61 @@ def evaluate_baselines(profiles, rules, rule_names, *args):
 
     rules_dict = dict()
 
-    candidate_map = {"Austin": 0, "Brad": 1, "Chad": 2}
+    # Helpers for aggreate versions
+    top = []
+    bottom = []
+
+    # Initialize results dict
+    for i in range(len(rules)):
+        rules_dict[rule_names[i]] = dict()
+        rules_dict[rule_names[i]]["Winner(s)"] = []
+        rules_dict[rule_names[i]]["Condorcet"] = 0
+        rules_dict[rule_names[i]]["Majority"] = 0
+        rules_dict[rule_names[i]]["IM_score_individual"] = []
+        rules_dict[rule_names[i]]["IM_score_aggregate"] = ""
+        # rules_dict[rule_names[i]]["IM"] = 0
+        # rules_dict[rule_names[i]]["IM_ties"] = 0
 
     for profile in profiles:
+        # print("Profile:", profile.rank_matrix)
         for i, rule in enumerate(rules):
-            rules_dict[rule_names[i]] = dict()
+            # print("Rule:", rule)
+            # rules_dict[rule_names[i]] = dict()
             r = rule(profile)
 
             winners = r.cowinners_
-            rules_dict[rule_names[i]]["Winner(s)"] = winners if len(r.cowinners_) == 1 else list(winners)
-            rules_dict[rule_names[i]]["Condorcet"] = check_condorcet(profile, winners)
-            rules_dict[rule_names[i]]["Majority"] = check_majority(profile, winners)
-            # rules_dict[rule_names[i]]["Plurality"] = 2
+            rules_dict[rule_names[i]]["Winner(s)"].append(next(iter(winners)) if len(r.cowinners_) == 1 else list(winners))
+            rules_dict[rule_names[i]]["Condorcet"] += check_condorcet(profile, winners)
+            rules_dict[rule_names[i]]["Majority"] += check_majority(profile, winners)
 
-            rules_dict[rule_names[i]]["IM"] = 0
-            rules_dict[rule_names[i]]["IM_ties"] = 0
+            im = 0
+            im_ties = 0
 
-            for alt_profile in profile.IM_ballots[candidate_map[next(iter(r.cowinners_))]]:
+            # print("Total IM profiles:", len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]]))
 
+            for j, alt_profile in enumerate(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]]):
+                # print(profile.IM_rank_matrices[CANDIDATE_MAP[next(iter(r.cowinners_))]][j])
                 alt_r = rule(alt_profile, *args)
                 if len(alt_r.cowinners_) == 1:
                     alt_winners = next(iter(alt_r.cowinners_))
                     if alt_winners == next(iter(winners)):
-                        rules_dict[rule_names[i]]["IM"] += 1
+                        im += 1
                 else:
-                    rules_dict[rule_names[i]]["IM_ties"] += 1
+                    im_ties += 1
+
+            top.append(im)
+            bottom.append(len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]]))
+
+            # Is this thing correct???????? Why dhave the same score???oes every rule
+            # print("BRO", top, bottom)
+
+            rules_dict[rule_names[i]]["IM_score_individual"].append(
+                f"{im}/{len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]])}")
+
+
+    # Include aggregate meaures
+    for i in range(len(rules)):
+        rules_dict[rule_names[i]]["IM_score_aggregate"] = f"{sum(top)}/{sum(bottom)}, {sum(top)/sum(bottom)}"
 
     return rules_dict
 
@@ -101,7 +140,32 @@ def election(profile, weights=None):
 
 
 def main():
-    pass
+
+    path = "../../data/"
+    fdir = os.listdir(path)
+
+    fdir = [f for f in fdir if ".DS_Store" not in f]
+
+    for fname in fdir:
+        print("=======================================")
+        print("FILE NAME:", fname)
+        profiles = load_dataset(path + fname)
+
+
+
+        rrm = sum([p._repeated_rank_matrices for p in profiles])
+        print(f"Repeated rank matrices for {fname}: {rrm}")
+        print("-------")
+
+        baseline_results = run_baselines(profiles)
+
+        print("Baselines results")
+        for rule, res in baseline_results.items():
+            print("Rule:", rule)
+            print(res)
+            print("-------")
+        print("=======================================")
+
     # try:
     #     n_voters = int(sys.argv[1])
     # except Exception as e:

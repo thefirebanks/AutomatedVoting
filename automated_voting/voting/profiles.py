@@ -1,3 +1,13 @@
+"""
+@author: Daniel Firebanks-Quevedo
+
+For one distribution
+- python profiles.py -p 20 -c 3 -v 10 -nd 1 -d gaussian -im 15 -s 69420
+
+For all distributions
+- python profiles.py -p 20 -c 5 -v 10 -nd 7 -im 20 -s 69420
+"""
+
 from numpy import random, array, zeros, flatnonzero, genfromtxt, array_equal
 from pandas import DataFrame
 from svvamp import PopulationCubicUniform, PopulationEuclideanBox, PopulationGaussianWell, \
@@ -9,32 +19,9 @@ from pickle import dump, load
 from tqdm import tqdm
 from whalrus.ballot.BallotOrder import BallotOrder
 import argparse
+import numpy as np
 
-parser = argparse.ArgumentParser(description='Define parameters for generation of Profile datasets')
-
-parser.add_argument('-p', '--n_profiles', metavar='profiles', type=int,
-                        required=True,
-                        help='Number of profiles')
-
-parser.add_argument('-c', '--n_candidates', metavar='candidates', type=int,
-                        required=True,
-                        help='Number of candidates')
-
-parser.add_argument('-v', '--n_voters', metavar='voters', type=int,
-                        required=True,
-                        help='Number of voters')
-
-parser.add_argument('-d', '--distribution', metavar='dists', type=str,
-                        default="spheroid",
-                        help='Name of distribution if we only want to generate data from one distribution. If this is the case, -nd should be set to 1')
-
-parser.add_argument('-nd', '--n_distributions', metavar='n_dists', type=int,
-                        default="1",
-                        help='Number of distributions if we want to generate dataset from multiple. Else just 1 and specify -d')
-
-
-args = parser.parse_args()
-
+DATASET_FOLDER = "../../data"
 
 # Add this method so that we can sort ballot objects
 def __lt__(ballot1, ballot2):
@@ -50,7 +37,7 @@ setattr(BallotOrder, "__gt__", __gt__)
 
 
 class AVProfile(Profile):
-    def __init__(self, n_voters, origin="distribution", params="spheroid", candidates=None):
+    def __init__(self, n_voters, origin="distribution", params="spheroid", IM_count=15, candidates=None, seed=69420):
 
         # Make sure we have the right input
         if origin == "distribution" and candidates is None:
@@ -60,6 +47,8 @@ class AVProfile(Profile):
 
         # Generate the ballots
         if origin == "distribution":
+
+            np.random.seed(seed)
 
             # Create a population object
             if params == "cubic":
@@ -141,7 +130,7 @@ class AVProfile(Profile):
 
         # Create a sample of simulated profiles for IM
         # TODO This could be simply the list of ballots and we update rank matrix later!!!!!!!!!!!
-        self._IM_rank_matrices, self._IM_ballots = self.create_IM()
+        self._IM_rank_matrices, self._IM_ballots = self.create_IM(count=IM_count)
 
         # Create a sample of simulated profiles for IIA
         # self._IIA_profiles = self.create_IIA_dict()
@@ -384,7 +373,7 @@ class AVProfile(Profile):
 
         return df
 
-    def update_ballots(self, c_down, c_up, c_down_rank, c_up_rank):
+    def new_ballots(self, c_down, c_up, c_down_rank, c_up_rank):
         """
         Given two candidates c_down, c_up and two ranks c_down_rank, c_up_rank, we want to find the first ballot
         that has c_down in c_down rank and c_up in c_up_rank, and switch them. This will update the list of ballots
@@ -413,6 +402,9 @@ class AVProfile(Profile):
         IM_rank_matrices = dict()
         IM_ballots = dict()
 
+        # Make sure we have the right, original matrix
+        self._rank_matrix = self.to_count_matrix()
+
         for possible_winner in range(self.n_candidates):
             # print(f"Generating alternative IM profiles for candidate {self.candidates[possible_winner]}...")
 
@@ -427,19 +419,20 @@ class AVProfile(Profile):
         IM_ballots = []
 
         wanted_candidates = [i for i in range(self.n_candidates) if i != winner_idx]
-        self._rank_matrix = self.to_count_matrix()
 
         for alt_candidate in wanted_candidates:
             for i in range(count):
-                # TODO If we have exhausted possibilities, we should change our option - for now we will return
+                # #TODO If we have exhausted possibilities, we should change our option - for now we will return
                 # if len(self._IM_pairs_set) >= (self.n_candidates-1)*(self.n_candidates) - 2:
                 #     return IM_profiles
 
                 IM_profile, c_up, c_up_rank, c_down, c_down_rank = self.generate_IM_rank_matrix(alt_candidate,
                                                                                                 winner_idx)
+
+                # Make sure that we only add profiles that are not equal to the original profile
                 if not array_equal(IM_profile, self._rank_matrix):
                     IM_rank_matrices.append(IM_profile)
-                    IM_ballots.append(self.update_ballots(c_down, c_up, c_down_rank, c_up_rank))
+                    IM_ballots.append(self.new_ballots(c_down, c_up, c_down_rank, c_up_rank))
 
         return IM_rank_matrices, IM_ballots
 
@@ -469,7 +462,6 @@ class AVProfile(Profile):
             if i % 50 == 0:
                 option += 1
             if option > 3:
-                self._repeated_rank_matrices += 1
                 return new_rank_matrix, -1, -1, -1, -1
 
         # Perform operations
@@ -534,16 +526,22 @@ class AVProfile(Profile):
         return array
 
 
-def generate_profile_dataset(num_profiles, n_voters, candidates, origin="distribution", params="spheroid"):
+def generate_profile_dataset(num_profiles, n_voters, candidates, origin, params, IM_count, r_seed):
+    # Choose a random seed every time
+    np.random.seed(r_seed)
+    seeds = list(range(99999))
+    np.random.shuffle(seeds)
+
     dataset = []
 
     for i in tqdm(range(num_profiles)):
-        dataset.append(AVProfile(n_voters, origin=origin, params=params, candidates=candidates))
+        seed = seeds.pop()
+        dataset.append(AVProfile(n_voters, origin=origin, params=params, candidates=candidates, IM_count=IM_count, seed=seed))
     return dataset
 
 
 def store_dataset(dataset, n_candidates, n_voters, n_profiles, distr_name):
-    with open(f"{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles", "wb") as fp:
+    with open(f"{DATASET_FOLDER}/{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles", "wb") as fp:
         dump(dataset, fp)
         print(f"Stored: {distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles")
 
@@ -557,6 +555,34 @@ def load_dataset(file_name):
     return pickled_dataset
 
 def main():
+    parser = argparse.ArgumentParser(description='Define parameters for generation of Profile datasets')
+
+    parser.add_argument('-p', '--n_profiles', metavar='profiles', type=int,
+                        required=True,
+                        help='Number of profiles')
+
+    parser.add_argument('-c', '--n_candidates', metavar='candidates', type=int,
+                        required=True,
+                        help='Number of candidates')
+
+    parser.add_argument('-v', '--n_voters', metavar='voters', type=int,
+                        required=True,
+                        help='Number of voters')
+
+    parser.add_argument('-nd', '--n_distributions', metavar='n_dists', type=int,
+                        default="1",
+                        help='Number of distributions if we want to generate dataset from multiple. Else just 1 and specify -d')
+
+    parser.add_argument('-d', '--distribution', metavar='dists', type=str,
+                        default="spheroid",
+                        help='Name of distribution if we only want to generate data from one distribution. If this is the case, -nd should be set to 1')
+
+    parser.add_argument('-im', '--n_im_profiles', metavar='IMprofiles', type=int, default=15,
+                        help="Number of IM alternative profiles we want to generate per possible winner")
+    parser.add_argument('-s', '--r_seed', metavar='seed', type=int, default=69420,
+                        help="Random seed to shuffle the list of random seeds :D ")
+
+    args = parser.parse_args()
 
     candidates = ["Austin", "Brock", "Chad", "Derek", "Ethan", "Gabe", "Jack", "Liam", "Mike", "Tyler"]
     distributions = ["spheroid", "cubic", "euclidean", "gaussian", "ladder", "VMFHypercircle", "VMFHypersphere"]
@@ -566,6 +592,8 @@ def main():
     n_candidates = args.n_candidates
     candidates = candidates[:n_candidates]
     n_dists = args.n_distributions
+    n_im = args.n_im_profiles
+    seed = args.r_seed
 
     if n_dists == 1:
         dists = args.distribution
@@ -575,7 +603,8 @@ def main():
         print("==========================================")
         print(f"\nGenerating {dists} dataset...\n")
         print("==========================================")
-        dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", dists)
+
+        dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", dists, n_im, seed)
         store_dataset(dataset, n_candidates, n_voters, n_profiles, dists)
         print()
 
@@ -586,7 +615,9 @@ def main():
             print("==========================================")
             print(f"\nGenerating {distribution} dataset...\n")
             print("==========================================")
-            dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution)
+
+
+            dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution, n_im, seed)
             store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
             print()
 

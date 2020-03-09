@@ -1,3 +1,10 @@
+"""
+@author: Daniel Firebanks-Quevedo
+
+python main.py -f /data/spheroid_nC5_nV500_nP100.profiles -c 5
+
+"""
+
 from automated_voting.algorithms.neural_network import AVNet
 from automated_voting.voting.profiles import load_dataset, AVProfile
 from automated_voting.voting.election import run_baselines

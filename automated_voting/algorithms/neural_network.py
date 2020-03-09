@@ -1,3 +1,7 @@
+"""
+@author: Daniel Firebanks-Quevedo
+"""
+
 import sys
 sys.path.append("../..")  # To call from the automated_voting/algorithms/ folder
 sys.path.append("..")     # To call from the automated_voting/ folder
@@ -241,7 +245,7 @@ def main():
     n_features = n_candidates * n_candidates
 
     # Step 2: Load a dataset
-    profiles = load_dataset('../../automated_voting/voting/profile_data/spheroid_nC5_nV500_nP100.profiles')
+    profiles = load_dataset('../../data/spheroid_nC5_nV500_nP100.profiles')
 
     # Step 3: Define model and start training loop
     start_n = time.time()
