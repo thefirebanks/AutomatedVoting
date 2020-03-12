@@ -20,6 +20,12 @@ parser.add_argument('-f', '--file_name', metavar='fn', type=str,
 parser.add_argument('-c', '--n_candidates', metavar='cand', type=int,
                         required=True,
                         help='Number of candidates')
+parser.add_argument('-e', '--epochs', metavar='epochs', type=int,
+                    default=20,
+                    help="Number of epochs")
+
+parser.add_argument('-lr', '--l_rate', metavar='lrate', type=float,
+                    help="learning rate for network")
 
 args = parser.parse_args()
 
@@ -27,6 +33,8 @@ def main():
     # Step 1: Define basic parameters
     n_candidates = args.n_candidates
     n_features = n_candidates * n_candidates
+    epochs = args.epochs
+    l_rate = args.l_rate
 
     # Step 2: Load a dataset - a list of AVProfiles
     profiles = load_dataset(args.file_name)
@@ -47,8 +55,8 @@ def main():
     print("=======================================")
     # Step 4: Define model and start training loop
     start_n = time.time()
-    av_model = AVNet(n_features, n_candidates, inp_shape=(1, n_features))
-    av_model.train(profiles, epochs=10)
+    av_model = AVNet(n_features, n_candidates, inp_shape=(1, n_features), l_rate=l_rate)
+    av_model.train(profiles, epochs)
 
     _ = av_model.get_results()
 

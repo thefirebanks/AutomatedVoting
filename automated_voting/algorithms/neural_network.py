@@ -21,7 +21,7 @@ from tensorflow import GradientTape
 import time
 
 class AVNet(Model):
-    def __init__(self, n_features, n_candidates, inp_shape):
+    def __init__(self, n_features, n_candidates, inp_shape, l_rate):
         '''
             Simple version: 1 input layer (relu), 1 hidden layer (relu), 1 output layer (softmax)
             Extras:
@@ -37,8 +37,7 @@ class AVNet(Model):
         #         self.last_layer = Dense(n_candidates, activation='relu')
         self.scorer = Dense(n_candidates, activation='softmax')
 
-        # Define optimizer and loss function (MUST BE "GLOBAL!")
-        self.optimizer = SGD(learning_rate=0.001)
+        self.optimizer = SGD(learning_rate=l_rate)
         self.CCE = CategoricalCrossentropy()
 
         # TODO: We should also store all the different values of these scores to plot overtime!!!!

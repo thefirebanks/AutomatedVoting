@@ -64,10 +64,11 @@ def evaluate_baselines(profiles, rules, rule_names, *args):
                 - IRV? """
 
     rules_dict = dict()
+    im_totals = []
 
     # Helpers for aggreate versions
-    top = []
-    bottom = []
+    top = dict()
+    bottom = dict()
 
     # Initialize results dict
     for i in range(len(rules)):
@@ -77,8 +78,9 @@ def evaluate_baselines(profiles, rules, rule_names, *args):
         rules_dict[rule_names[i]]["Majority"] = 0
         rules_dict[rule_names[i]]["IM_score_individual"] = []
         rules_dict[rule_names[i]]["IM_score_aggregate"] = ""
-        # rules_dict[rule_names[i]]["IM"] = 0
-        # rules_dict[rule_names[i]]["IM_ties"] = 0
+        rules_dict[rule_names[i]]["IM_ties"] = 0
+        top[rule_names[i]] = 0
+        bottom[rule_names[i]] = 0
 
     for profile in profiles:
         # print("Profile:", profile.rank_matrix)
@@ -107,19 +109,22 @@ def evaluate_baselines(profiles, rules, rule_names, *args):
                 else:
                     im_ties += 1
 
-            top.append(im)
-            bottom.append(len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]]))
+            rules_dict[rule_names[i]]["IM_ties"] += im_ties
 
-            # Is this thing correct???????? Why dhave the same score???oes every rule
-            # print("BRO", top, bottom)
+            top[rule_names[i]] += im
+            bottom[rule_names[i]] += len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]])
 
             rules_dict[rule_names[i]]["IM_score_individual"].append(
                 f"{im}/{len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]])}")
 
+    for i in range(len(rule_names)):
+        # # Include aggregate meaures
+        rules_dict[rule_names[i]]["IM_score_aggregate"] = f"{top[rule_names[i]]}/{bottom[rule_names[i]]}, {top[rule_names[i]]/bottom[rule_names[i]]}"
 
-    # Include aggregate meaures
-    for i in range(len(rules)):
-        rules_dict[rule_names[i]]["IM_score_aggregate"] = f"{sum(top)}/{sum(bottom)}, {sum(top)/sum(bottom)}"
+    im_totals = sum(top.values())/sum(bottom.values())
+    im_score = 1 - im_totals
+    print("Survival to IM:", im_totals)
+    print("IM rate:", im_score)
 
     return rules_dict
 
@@ -153,9 +158,9 @@ def main():
 
 
 
-        rrm = sum([p._repeated_rank_matrices for p in profiles])
-        print(f"Repeated rank matrices for {fname}: {rrm}")
-        print("-------")
+        # rrm = sum([p._repeated_rank_matrices for p in profiles])
+        # print(f"Repeated rank matrices for {fname}: {rrm}")
+        # print("-------")
 
         baseline_results = run_baselines(profiles)
 
