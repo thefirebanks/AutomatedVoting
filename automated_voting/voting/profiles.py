@@ -392,7 +392,7 @@ class AVProfile(Profile):
                 # Swap candidates at a given position
                 new_ballot_l[c_up_rank], new_ballot_l[c_down_rank] = c_down, c_up
 
-                # Create a new ballotorder obj and replace!
+                # Create a new ballot order obj and replace!
                 new_ballots[i] = BallotOrder(new_ballot_l)
                 break
 
@@ -422,10 +422,6 @@ class AVProfile(Profile):
 
         for alt_candidate in wanted_candidates:
             for i in range(count):
-                # #TODO If we have exhausted possibilities, we should change our option - for now we will return
-                # if len(self._IM_pairs_set) >= (self.n_candidates-1)*(self.n_candidates) - 2:
-                #     return IM_profiles
-
                 IM_profile, c_up, c_up_rank, c_down, c_down_rank = self.generate_IM_rank_matrix(alt_candidate,
                                                                                                 winner_idx)
 
@@ -449,10 +445,15 @@ class AVProfile(Profile):
             (candidate_down_rank, candidate_down), (candidate_up_rank, candidate_up) = \
                 self.generate_IM_rank_pairs(wanted_idx, winner_idx, option=option)
 
-            # TODO: We may have the same candidate_down, rank tuples as candidate up and might diminish our possibilities
             # If we have found a good alternative profile, great! Else we just keep looking for one
-            if (candidate_down_rank, candidate_down) not in self._IM_pairs_set and (
-                    candidate_up_rank, candidate_up) not in self._IM_pairs_set:
+            # What is a good alternative profile?
+            # 1. We haven't chosen this pair already
+            # 2. There is at least 1 person that voted for candidate up/down in a particular rank (No 0s in rank matrix)
+            if (candidate_down_rank, candidate_down) not in self._IM_pairs_set and \
+                (candidate_up_rank, candidate_up) not in self._IM_pairs_set and \
+                new_rank_matrix[candidate_up_rank, candidate_up] != 0 and \
+                new_rank_matrix[candidate_down_rank, candidate_down] != 0:
+
                 self._IM_pairs_set.add((candidate_down_rank, candidate_down))
                 self._IM_pairs_set.add((candidate_up_rank, candidate_up))
                 break
@@ -483,10 +484,8 @@ class AVProfile(Profile):
 
             @returns: alt_rank_matrix = 2D np.array representing an alternative rank_matrix """
 
-        # TODO: FOR NOW: 3 IM matrices per possible winner!!!!!!!!!!!!!
 
         # TODO: DEAL WITH ZEROS IN THE MATRIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!! So we don't end up with negative ranks
-        # TODO Maybe after a certain number of iterations, if we see that the length of set pair does not change, we break!
 
         # Choose random non-winner/non-wanted candidates to alter their rank - Make sure we don't choose the same candidate
         candidate_down = random.choice(self.all_candidates_idx)
@@ -540,10 +539,10 @@ def generate_profile_dataset(num_profiles, n_voters, candidates, origin, params,
     return dataset
 
 
-def store_dataset(dataset, n_candidates, n_voters, n_profiles, distr_name):
-    with open(f"{DATASET_FOLDER}/{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles", "wb") as fp:
+def store_dataset(dataset, n_candidates, n_voters, n_profiles, distr_name, im_count):
+    with open(f"{DATASET_FOLDER}/{distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}_imC{im_count}.profiles", "wb") as fp:
         dump(dataset, fp)
-        print(f"Stored: {distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}.profiles")
+        print(f"Stored: {distr_name}_nC{n_candidates}_nV{n_voters}_nP{n_profiles}_imC{im_count}.profiles")
 
 
 def load_dataset(file_name):
@@ -605,7 +604,7 @@ def main():
         print("==========================================")
 
         dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", dists, n_im, seed)
-        store_dataset(dataset, n_candidates, n_voters, n_profiles, dists)
+        store_dataset(dataset, n_candidates, n_voters, n_profiles, dists, n_im)
         print()
 
     else:
@@ -616,9 +615,9 @@ def main():
             print(f"\nGenerating {distribution} dataset...\n")
             print("==========================================")
 
-
-            dataset = generate_profile_dataset(n_profiles, n_voters, candidates, "distribution", distribution, n_im, seed)
-            store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution)
+            dataset = generate_profile_dataset(n_profiles, n_voters, candidates,
+                                               "distribution", distribution, n_im, seed)
+            store_dataset(dataset, n_candidates, n_voters, n_profiles, distribution, n_im)
             print()
 
     # profile = AVProfile(5, origin="distribution",

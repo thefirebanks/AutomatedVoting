@@ -8,10 +8,12 @@ sys.path.append("..")     # To call from the automated_voting/ folder
 
 
 from automated_voting.voting.profiles import load_dataset, AVProfile, generate_profile_dataset
-from numpy import zeros, argmax, count_nonzero
+from automated_voting.voting.election import get_winner
+
+from numpy import count_nonzero, mean
 from tensorflow.keras import Model
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.layers import Dense, LeakyReLU
+from tensorflow.keras.optimizers import Adam, SGD, Adagrad
 # from tensorflow.keras.utils import plot_model
 # from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import CategoricalCrossentropy
@@ -21,7 +23,7 @@ from tensorflow import GradientTape
 import time
 
 class AVNet(Model):
-    def __init__(self, n_features, n_candidates, inp_shape, l_rate):
+    def __init__(self, n_features, n_candidates, inp_shape, opt, l_rate):
         '''
             Simple version: 1 input layer (relu), 1 hidden layer (relu), 1 output layer (softmax)
             Extras:
@@ -34,13 +36,22 @@ class AVNet(Model):
         # Define layers
         self.input_layer = Dense(n_features, activation='relu', input_shape=inp_shape)
         self.mid_layer = Dense(n_candidates * n_features, activation='relu')
-        #         self.last_layer = Dense(n_candidates, activation='relu')
+        self.last_layer = Dense(n_candidates * n_features, activation='linear')
+        self.leaky_relu = LeakyReLU(alpha=0.3)
         self.scorer = Dense(n_candidates, activation='softmax')
 
-        self.optimizer = SGD(learning_rate=l_rate)
-        self.CCE = CategoricalCrossentropy()
+        if opt == "Adam":
+            self.optimizer = Adam(learning_rate=l_rate)
+        elif opt == "Adagrad":
+            self.optimizer = Adagrad(learning_rate=l_rate)
+        else:
+            self.optimizer = SGD(learning_rate=l_rate)
 
-        # TODO: We should also store all the different values of these scores to plot overtime!!!!
+        self.CCE = CategoricalCrossentropy()
+        self.av_losses = []
+
+    def reset_scores(self):
+
         # Scoring functions
         self.total_condorcet = 0
         self.total_majority = 0
@@ -52,6 +63,7 @@ class AVNet(Model):
         self.plurality_score = 0
         self.IM_score = 0
 
+
     def call(self, inputs, **kwargs):
         """ Inputs is some tensor version of the ballots in an AVProfile
             For testing purposes we will use AVProfile.rank_matrix, which represents
@@ -60,21 +72,10 @@ class AVNet(Model):
         # Get rank matrices
         x = self.input_layer(inputs)
         x = self.mid_layer(x)
-        # x = self.last_layer(x)
+        x = self.last_layer(x)
+        x = self.leaky_relu(x)
 
         return self.scorer(x)
-
-    @staticmethod
-    def get_winner(candidate_vector, candidates, out_format="string"):
-
-        if out_format == "idx":
-            return argmax(candidate_vector.numpy())
-        elif out_format == "one-hot":
-            one_hot = zeros(shape=(len(candidates),))
-            one_hot[argmax(candidate_vector.numpy())] = 1
-            return one_hot
-        else:
-            return candidates[argmax(candidate_vector.numpy())]
 
     def av_loss(self, profile, verbose=False):
         """ An av_loss function will take an instance of <profile, condorcet_winner, majority_winner, simulator_list>, where
@@ -108,10 +109,10 @@ class AVNet(Model):
 
         # Make a forward pass to the profile
         predictions = self.call(profile_matrix)
-        pred_w = self.get_winner(predictions, profile.candidates)
+        pred_w = get_winner(predictions, profile.candidates)
 
         # Simulated preferences according to the predicted winner
-        alternative_profiles = profile.IM_rank_matrices[self.get_winner(predictions, profile.candidates, out_format="idx")]
+        alternative_profiles = profile.IM_rank_matrices[get_winner(predictions, profile.candidates, out_format="idx")]
         alternative_profiles = [profile.flatten_rank_matrix(alt_profile) for alt_profile in alternative_profiles]
 
         # Keep track of scores
@@ -135,7 +136,7 @@ class AVNet(Model):
             print("Majority winner:", majority_w)
             print("Plurality winner:", plurality_w)
             print("-----------------")
-            print("Predicted winner:", self.get_winner(predictions, profile.candidates))
+            print("Predicted winner:", get_winner(predictions, profile.candidates))
             print("Predicted winner quality scores:", predictions)
             print("------------------------------------------------------------")
 
@@ -147,10 +148,10 @@ class AVNet(Model):
 
             for IM_alt_profile in alternative_profiles:
                 alt_winner = self.call(IM_alt_profile)
-                pred_c_vec = self.get_winner(pred_c, profile.candidates, out_format="one-hot")
+                pred_c_vec = get_winner(pred_c, profile.candidates, out_format="one-hot")
 
                 # Keep track of when winners match between altered profiles and original profile
-                if self.get_winner(alt_winner, profile.candidates) == self.get_winner(pred_c, profile.candidates):
+                if get_winner(alt_winner, profile.candidates) == get_winner(pred_c, profile.candidates):
                     alt_profiles_score += 1
 
                 IM_score += self.CCE(pred_c_vec, alt_winner)
@@ -166,14 +167,21 @@ class AVNet(Model):
             IM_score /= len(alternative_profiles)
 
             # If there isn't a Condorcet or a Majority winner, just use the Plurality winner
-            if count_nonzero(condorcet_w_vec) == 0 and count_nonzero(majority_w_vec):
+            if count_nonzero(condorcet_w_vec) == 0 and count_nonzero(majority_w_vec) == 0:
                 plurality_score = self.CCE(plurality_c, pred_c)
                 return plurality_score + IM_score
             else:
                 condorcet_score = self.CCE(condorcet_w_vec, pred_c)
                 majority_score = self.CCE(majority_w_vec, pred_c)
 
-                return condorcet_score + majority_score + IM_score
+                if count_nonzero(condorcet_w_vec) != 0 and count_nonzero(majority_w_vec) == 0:
+                    return condorcet_score + IM_score
+
+                if count_nonzero(condorcet_w_vec) == 0 and count_nonzero(majority_w_vec) != 0:
+                    return majority_score + IM_score
+
+                else:
+                    return majority_score + condorcet_score + IM_score
 
         # Return loss function
         return loss(plurality_c=plurality_w_vec, pred_c=predictions)
@@ -186,6 +194,7 @@ class AVNet(Model):
 
     def train(self, profiles, epochs):
         for epoch in range(epochs):
+            self.reset_scores()
 
             print(f"Epoch {epoch} ==============================================================")
             # Iterate through the list of profiles, not datasets
@@ -198,13 +207,15 @@ class AVNet(Model):
                 else:
                     loss_value, grads = self.calculate_grad(profiles[i])
 
+                self.av_losses.append(loss_value)
+
                 self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
 
             print("\n\n")
 
     def get_results(self):
         print("===================================================")
-        print("Results")
+        print("AVNet Results")
         print("---------------------------------------------------")
 
         results = dict()
@@ -220,7 +231,7 @@ class AVNet(Model):
         if self.total_majority != 0:
             print(
                 f"Majority Score: {self.majority_score}/{self.total_majority} = {self.majority_score / self.total_majority}")
-            results["Majority Score"] = (f"{self.majority_score}/{self.total_majority}", self.majority_score / self.total_majority)
+            results["Majority Sco re"] = (f"{self.majority_score}/{self.total_majority}", self.majority_score / self.total_majority)
         else:
             print("No Majority Winners")
             results["Majority Score"] = (0, 0)
@@ -234,6 +245,8 @@ class AVNet(Model):
 
         print(f"IM Score: {self.IM_score}/{self.total_IM} = {self.IM_score / self.total_IM}")
         results["IM Score"] = (f"{self.IM_score}/{self.total_IM}", self.IM_score / self.total_IM)
+
+        print(f"IM CCE Mean:", mean(self.av_losses))
 
         return results
 
