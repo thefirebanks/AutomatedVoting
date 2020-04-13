@@ -12,7 +12,7 @@ from automated_voting.voting.election import get_winner
 
 from numpy import count_nonzero, mean
 from tensorflow.keras import Model
-from tensorflow.keras.layers import Dense, LeakyReLU
+from tensorflow.keras.layers import Dense, LeakyReLU, BatchNormalization, Dropout
 from tensorflow.keras.optimizers import Adam, SGD, Adagrad
 # from tensorflow.keras.utils import plot_model
 # from tensorflow.keras.models import load_model
@@ -23,7 +23,7 @@ from tensorflow import GradientTape
 import time
 
 class AVNet(Model):
-    def __init__(self, n_features, n_candidates, inp_shape, opt, l_rate):
+    def __init__(self, n_features, n_candidates, n_voters, inp_shape, opt, l_rate, arch):
         '''
             Simple version: 1 input layer (relu), 1 hidden layer (relu), 1 output layer (softmax)
             Extras:
@@ -33,11 +33,51 @@ class AVNet(Model):
         '''
         super(AVNet, self).__init__()
 
+        # This architecture variable allows us to run concurrent experiments automatically
+        self.arch = arch
+
         # Define layers
         self.input_layer = Dense(n_features, activation='relu', input_shape=inp_shape)
-        self.mid_layer = Dense(n_candidates * n_features, activation='relu')
-        self.last_layer = Dense(n_candidates * n_features, activation='linear')
+
+        if self.arch == 1:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.last_layer = Dense(n_candidates * n_voters, activation='relu')
+
+        elif self.arch == 2:
+            self.mid_layer = Dense(n_candidates * n_voters, activation='relu')
+            self.last_layer = Dense(n_candidates * n_features, activation='relu')
+
+        elif self.arch == 3:
+            self.mid_layer = Dense(n_candidates * n_voters, activation='relu')
+            self.last_layer= Dense(n_candidates * n_features, activation='linear')
+
+        elif self.arch == 4:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.last_layer = Dense(n_candidates * n_voters, activation='linear')
+
+        elif self.arch == 5:
+            self.mid_layer = Dense(n_candidates * n_voters, activation='linear')
+            self.last_layer = Dense(n_candidates * n_features, activation='linear')
+
+        elif self.arch == 6:
+            self.mid_layer = Dense(n_candidates * n_features, activation='linear')
+            self.last_layer = Dense(n_candidates * n_voters, activation='linear')
+
+        elif self.arch == 7:
+            self.mid_layer = Dense(128, activation='relu')
+            self.last_layer = Dense(256, activation='relu')
+
+        elif self.arch == 8:
+            self.mid_layer = Dense(128, activation='linear')
+            self.last_layer = Dense(256, activation='linear')
+
+        else:
+            print("Must enter a valid network architecture! [1-8]")
+            sys.exit(1)
+
         self.leaky_relu = LeakyReLU(alpha=0.3)
+        self.dropout = Dropout(0.2)
+        self.batch_norm = BatchNormalization()
         self.scorer = Dense(n_candidates, activation='softmax')
 
         if opt == "Adam":
@@ -63,17 +103,30 @@ class AVNet(Model):
         self.plurality_score = 0
         self.IM_score = 0
 
-
     def call(self, inputs, **kwargs):
         """ Inputs is some tensor version of the ballots in an AVProfile
             For testing purposes we will use AVProfile.rank_matrix, which represents
             the count of each candidate per rank """
 
-        # Get rank matrices
         x = self.input_layer(inputs)
-        x = self.mid_layer(x)
-        x = self.last_layer(x)
-        x = self.leaky_relu(x)
+        if self.arch in [1, 2, 7, 8]:
+            x = self.mid_layer(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            x = self.dropout(x)
+        elif self.arch in [3, 4]:
+            x = self.mid_layer(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
+        elif self.arch in [5, 6]:
+            x = self.mid_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
 
         return self.scorer(x)
 
@@ -201,7 +254,7 @@ class AVNet(Model):
             for i in range(len(profiles)):
 
                 # Perform forward pass + calculate gradients
-                if i % 33 == 0:
+                if i % 100 == 0:
                     loss_value, grads = self.calculate_grad(profiles[i], verbose=True)
                     print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
                 else:
@@ -231,7 +284,7 @@ class AVNet(Model):
         if self.total_majority != 0:
             print(
                 f"Majority Score: {self.majority_score}/{self.total_majority} = {self.majority_score / self.total_majority}")
-            results["Majority Sco re"] = (f"{self.majority_score}/{self.total_majority}", self.majority_score / self.total_majority)
+            results["Majority Score"] = (f"{self.majority_score}/{self.total_majority}", self.majority_score / self.total_majority)
         else:
             print("No Majority Winners")
             results["Majority Score"] = (0, 0)
@@ -247,6 +300,7 @@ class AVNet(Model):
         results["IM Score"] = (f"{self.IM_score}/{self.total_IM}", self.IM_score / self.total_IM)
 
         print(f"IM CCE Mean:", mean(self.av_losses))
+        results["IM CCE Score"] = round(mean(self.av_losses), 3)
 
         return results
 

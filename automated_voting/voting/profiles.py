@@ -2,10 +2,11 @@
 @author: Daniel Firebanks-Quevedo
 
 For one distribution
-- python profiles.py -p 20 -c 3 -v 10 -nd 1 -d gaussian -im 15 -s 69420
+- python profiles.py -p 20 -c 3 -v 10 -nd 1 -d gaussian -im 40 -s 69420
 
 For all distributions
-- python profiles.py -p 20 -c 5 -v 10 -nd 7 -im 20 -s 69420
+- python profiles.py -p 100 -c 5 -v 40 -nd 7 -im 80 -s 69420
+
 """
 
 from numpy import random, array, zeros, flatnonzero, genfromtxt, array_equal

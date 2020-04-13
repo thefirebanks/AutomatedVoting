@@ -92,7 +92,6 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
 
     rules_dict = dict()
 
-
     # Helpers for aggreate versions
     top = dict()
     bottom = dict()
