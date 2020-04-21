@@ -40,10 +40,10 @@ CANDIDATES = ["Austin", "Brock", "Chad", "Derek", "Ethan", "Gabe", "Jack", "Liam
 CANDIDATE_MAP = dict(zip(CANDIDATES, range(len(CANDIDATES))))
 
 RULE_NAMES = ["RuleBorda", "RuleMaximin", "RuleCopeland", "RuleCondorcet", "RulePlurality", "RuleSchulze",
-                 "RuleBucklinInstant", "RuleVeto"]
+              "RuleBucklinInstant", "RuleVeto"]
 
 RULE_METHODS = [RuleBorda, RuleMaximin, RuleCopeland, RuleCondorcet, RulePlurality, RuleSchulze, RuleBucklinInstant,
-             RuleVeto]
+                RuleVeto]
 
 CCE = CategoricalCrossentropy()
 
@@ -103,8 +103,12 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
         rules_dict[rule_names[i]] = dict()
         rules_dict[rule_names[i]]["Winner"] = []
         rules_dict[rule_names[i]]["Winner_onehot"] = []
-        rules_dict[rule_names[i]]["Condorcet"] = 0
-        rules_dict[rule_names[i]]["Majority"] = 0
+        rules_dict[rule_names[i]]["Condorcet_total"] = 0
+        rules_dict[rule_names[i]]["Condorcet_accepted"] = 0
+        rules_dict[rule_names[i]]["Majority_total"] = 0
+        rules_dict[rule_names[i]]["Majority_accepted"] = 0
+        rules_dict[rule_names[i]]["Plurality_total"] = 0
+        rules_dict[rule_names[i]]["Plurality_accepted"] = 0
         rules_dict[rule_names[i]]["IM_score_individual"] = []
         rules_dict[rule_names[i]]["IM_score_aggregate"] = ""
         rules_dict[rule_names[i]]["IM_ties"] = 0
@@ -120,6 +124,10 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
         constraints["Majority"] = profile.majority_w_vector
         constraints["Plurality"] = profile.plurality_w_vector
 
+        constraints["Condorcet_str"] = profile.condorcet_w
+        constraints["Majority_str"] = profile.majority_w
+        constraints["Plurality_str"] = profile.plurality_w
+
         for i, rule in enumerate(rules):
             # print("Rule:", rule)
             # rules_dict[rule_names[i]] = dict()
@@ -130,8 +138,20 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
 
             rules_dict[rule_names[i]]["Winner"].append(pred_winner)
 
-            rules_dict[rule_names[i]]["Condorcet"] += check_condorcet(profile, winners)
-            rules_dict[rule_names[i]]["Majority"] += check_majority(profile, winners)
+            if constraints["Condorcet_str"] != "No Condorcet Winner":
+                rules_dict[rule_names[i]]["Condorcet_total"] += 1
+                if pred_winner == constraints["Condorcet_str"]:
+                    rules_dict[rule_names[i]]["Condorcet_accepted"] += 1
+
+            if constraints["Majority_str"] != "No Majority Winner":
+                rules_dict[rule_names[i]]["Majority_total"] += 1
+                if pred_winner == constraints["Majority_str"]:
+                    rules_dict[rule_names[i]]["Majority_accepted"] += 1
+
+            if constraints["Plurality_str"] != "No Plurality Winner":
+                rules_dict[rule_names[i]]["Plurality_total"] += 1
+                if pred_winner == constraints["Plurality_str"]:
+                    rules_dict[rule_names[i]]["Plurality_accepted"] += 1
 
             im_CCE, im, im_ties = AVLoss(pred_winner, constraints,
                                          profile.IM_ballots[CANDIDATE_MAP[pred_winner]], rule, profile.candidates)
@@ -140,7 +160,7 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
             rules_dict[rule_names[i]]["IM_CCE"].append(im_CCE)
 
             top[rule_names[i]] += im
-            bottom[rule_names[i]] += len(profile.IM_ballots[CANDIDATE_MAP[next(iter(r.cowinners_))]])
+            bottom[rule_names[i]] += len(profile.IM_ballots[CANDIDATE_MAP[pred_winner]])
 
             rules_dict[rule_names[i]]["IM_score_individual"].append(
                 f"{im}/{len(profile.IM_ballots[CANDIDATE_MAP[pred_winner]])}")
@@ -150,7 +170,22 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
         rules_dict[rule_names[i]]["IM_score_fraction"] = f"{top[rule_names[i]]}/{bottom[rule_names[i]]}"
         rules_dict[rule_names[i]]["IM_score_aggregate"] = round(top[rule_names[i]] / bottom[rule_names[i]], 3)
         rules_dict[rule_names[i]]["IM_CCE_mean"] = round(mean(rules_dict[rule_names[i]]["IM_CCE"]), 3)
-        rules_dict[rule_names[i]]["IM_mean"] = round(top[rule_names[i]]/bottom[rule_names[i]], 3)
+        rules_dict[rule_names[i]]["IM_mean"] = round(top[rule_names[i]] / bottom[rule_names[i]], 3)
+
+        rules_dict[rule_names[i]]["Condorcet_fraction"] = str(rules_dict[rule_names[i]]["Condorcet_accepted"]) \
+                                                          + "/" + str(rules_dict[rule_names[i]]["Condorcet_total"])
+        rules_dict[rule_names[i]]["Condorcet_Score"] = round(
+            rules_dict[rule_names[i]]["Condorcet_accepted"] / rules_dict[rule_names[i]]["Condorcet_total"], 3)
+
+        rules_dict[rule_names[i]]["Majority_fraction"] = str(rules_dict[rule_names[i]]["Majority_accepted"]) \
+                                                         + "/" + str(rules_dict[rule_names[i]]["Majority_total"])
+        rules_dict[rule_names[i]]["Majority_Score"] = round(
+            rules_dict[rule_names[i]]["Majority_accepted"] / rules_dict[rule_names[i]]["Majority_total"], 3)
+
+        rules_dict[rule_names[i]]["Plurality_fraction"] = str(rules_dict[rule_names[i]]["Plurality_accepted"]) \
+                                                         + "/" + str(rules_dict[rule_names[i]]["Plurality_total"])
+        rules_dict[rule_names[i]]["Plurality_Score"] = round(
+            rules_dict[rule_names[i]]["Plurality_accepted"] / rules_dict[rule_names[i]]["Plurality_total"], 3)
 
         print("Average IM Cross entropy:", rules_dict[rule_names[i]]["IM_CCE_mean"])
 
@@ -254,6 +289,7 @@ def output_results(results):
     df = pd.DataFrame(rows, columns=cols)
     df.to_csv("BaselinesResults.csv")
 
+
 def main():
     path = "../../data/"
     fdir = os.listdir(path)
@@ -282,7 +318,6 @@ def main():
             print(res)
             print("-------")
         print("=======================================")
-
 
     output_results(all_results)
 
