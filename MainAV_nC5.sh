@@ -3,7 +3,7 @@
 # Variables
 N_EPOCHS=$1
 
-for ARCH in 1 4 5
+for ARCH in 9 10 11
 do
   # Main Experiments - 5 candidates, 40 voters
   python main.py -f data/spheroid_nC5_nV40_nP100_imC80.profiles -c 5 -v 40 -e $N_EPOCHS -opt Adam -lr 0.001 -tp 0.2 -s 69420 -arch $ARCH

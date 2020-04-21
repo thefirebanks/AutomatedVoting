@@ -79,4 +79,4 @@ def write_output(run_name, train_baseline_res, test_baseline_res, train_avnet_re
     df_dict["Test Mean IM score"].append(round(test_avnet_res["IM CCE Score"], 3))
 
     df = pd.DataFrame(df_dict)
-    df.to_csv("Results_" + run_name + ".csv")
+    df.to_csv("results/Results_" + run_name + ".csv")

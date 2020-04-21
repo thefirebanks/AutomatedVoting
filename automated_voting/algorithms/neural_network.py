@@ -72,6 +72,34 @@ class AVNet(Model):
             self.mid_layer = Dense(128, activation='linear')
             self.last_layer = Dense(256, activation='linear')
 
+        elif self.arch == 9:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.last_layer = Dense(n_candidates * n_features, activation='relu')
+
+        elif self.arch == 10:
+            self.mid_layer = Dense(n_candidates * n_features, activation='linear')
+            self.last_layer = Dense(n_candidates * n_features, activation='linear')
+
+        elif self.arch == 11:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.last_layer = Dense(n_candidates * n_features, activation='linear')
+
+        # Voter level, candidate level
+        elif self.arch == 12:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.extra_layer = Dense(n_candidates * n_voters, activation='relu')
+            self.last_layer = Dense(n_candidates * n_features, activation='relu')
+
+        elif self.arch == 13:
+            self.mid_layer = Dense(n_candidates * n_features, activation='relu')
+            self.extra_layer = Dense(n_candidates * n_voters, activation='linear')
+            self.last_layer = Dense(n_candidates * n_features, activation='relu')
+
+        elif self.arch == 14:
+            self.mid_layer = Dense(n_candidates * n_features, activation='linear')
+            self.extra_layer = Dense(n_candidates * n_voters, activation='linear')
+            self.last_layer = Dense(n_candidates * n_features, activation='linear')
+
         else:
             print("Must enter a valid network architecture! [1-8]")
             sys.exit(1)
@@ -110,24 +138,49 @@ class AVNet(Model):
             the count of each candidate per rank """
 
         x = self.input_layer(inputs)
-        if self.arch in [1, 2, 7, 8]:
+        if self.arch in [1, 2, 7, 8, 9]:
             x = self.mid_layer(x)
             x = self.dropout(x)
             x = self.last_layer(x)
             x = self.dropout(x)
-        elif self.arch in [3, 4]:
+        elif self.arch in [3, 4, 11]:
             x = self.mid_layer(x)
             x = self.dropout(x)
             x = self.last_layer(x)
             x = self.leaky_relu(x)
             x = self.dropout(x)
-        elif self.arch in [5, 6]:
+        elif self.arch in [5, 6, 10]:
             x = self.mid_layer(x)
             x = self.leaky_relu(x)
             x = self.dropout(x)
             x = self.last_layer(x)
             x = self.leaky_relu(x)
             x = self.dropout(x)
+        elif self.arch == 12:
+            x = self.mid_layer(x)
+            x = self.dropout(x)
+            x = self.extra_layer(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            # x = self.dropout(x)
+        elif self.arch == 13:
+            x = self.mid_layer(x)
+            x = self.dropout(x)
+            x = self.extra_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            # x = self.dropout(x)
+        elif self.arch == 14:
+            x = self.mid_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
+            x = self.extra_layer(x)
+            x = self.leaky_relu(x)
+            x = self.dropout(x)
+            x = self.last_layer(x)
+            x = self.leaky_relu(x)
+            # x = self.dropout(x)
 
         return self.scorer(x)
 
