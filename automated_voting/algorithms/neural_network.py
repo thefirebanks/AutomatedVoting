@@ -21,6 +21,7 @@ from tensorflow import GradientTape
 # from tensorflow import convert_to_tensor
 # import tensorflow.keras.backend as kb
 import time
+from tqdm import tqdm
 
 class AVNet(Model):
     def __init__(self, n_features, n_candidates, n_voters, inp_shape, opt, l_rate, arch):
@@ -49,7 +50,7 @@ class AVNet(Model):
 
         elif self.arch == 3:
             self.mid_layer = Dense(n_candidates * n_voters, activation='relu')
-            self.last_layer= Dense(n_candidates * n_features, activation='linear')
+            self.last_layer = Dense(n_candidates * n_features, activation='linear')
 
         elif self.arch == 4:
             self.mid_layer = Dense(n_candidates * n_features, activation='relu')
@@ -185,6 +186,7 @@ class AVNet(Model):
         # Interpret the results
         if verbose:
             print("------------------------------------------------------------")
+            # print("Profile rank matrix:", profile.rank_matrix)
             print("Condorcet winner:", condorcet_w)
             print("Majority winner:", majority_w)
             print("Plurality winner:", plurality_w)
@@ -246,25 +248,25 @@ class AVNet(Model):
         return loss_value, tape.gradient(loss_value, self.trainable_variables)
 
     def train(self, profiles, epochs):
-        for epoch in range(epochs):
+        for _ in tqdm(range(epochs)):
             self.reset_scores()
 
-            print(f"Epoch {epoch} ==============================================================")
+            # print(f"Epoch {epoch} ==============================================================")
             # Iterate through the list of profiles, not datasets
-            for i in range(len(profiles)):
+            for i, profile in enumerate(profiles):
 
                 # Perform forward pass + calculate gradients
-                if i % 100 == 0:
-                    loss_value, grads = self.calculate_grad(profiles[i], verbose=True)
-                    print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
-                else:
-                    loss_value, grads = self.calculate_grad(profiles[i])
+                # if i % 33 == 0:
+                #     loss_value, grads = self.calculate_grad(profile, verbose=True)
+                #     print(f"Step: {self.optimizer.iterations.numpy()}, Loss: {loss_value}")
+                # else:
+                loss_value, grads = self.calculate_grad(profile)
 
                 self.av_losses.append(loss_value)
 
                 self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
 
-            print("\n\n")
+            # print("\n\n")
 
     def get_results(self):
         print("===================================================")

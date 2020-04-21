@@ -172,20 +172,33 @@ def evaluate_baselines(profiles, rules=None, rule_names=None):
         rules_dict[rule_names[i]]["IM_CCE_mean"] = round(mean(rules_dict[rule_names[i]]["IM_CCE"]), 3)
         rules_dict[rule_names[i]]["IM_mean"] = round(top[rule_names[i]] / bottom[rule_names[i]], 3)
 
+
         rules_dict[rule_names[i]]["Condorcet_fraction"] = str(rules_dict[rule_names[i]]["Condorcet_accepted"]) \
                                                           + "/" + str(rules_dict[rule_names[i]]["Condorcet_total"])
-        rules_dict[rule_names[i]]["Condorcet_Score"] = round(
-            rules_dict[rule_names[i]]["Condorcet_accepted"] / rules_dict[rule_names[i]]["Condorcet_total"], 3)
+
+        if rules_dict[rule_names[i]]["Condorcet_total"] != 0:
+            rules_dict[rule_names[i]]["Condorcet_Score"] = round(
+                rules_dict[rule_names[i]]["Condorcet_accepted"] / rules_dict[rule_names[i]]["Condorcet_total"], 3)
+        else:
+            rules_dict[rule_names[i]]["Condorcet_Score"] = 0
 
         rules_dict[rule_names[i]]["Majority_fraction"] = str(rules_dict[rule_names[i]]["Majority_accepted"]) \
                                                          + "/" + str(rules_dict[rule_names[i]]["Majority_total"])
-        rules_dict[rule_names[i]]["Majority_Score"] = round(
-            rules_dict[rule_names[i]]["Majority_accepted"] / rules_dict[rule_names[i]]["Majority_total"], 3)
+
+        if rules_dict[rule_names[i]]["Majority_total"] != 0:
+            rules_dict[rule_names[i]]["Majority_Score"] = round(
+                rules_dict[rule_names[i]]["Majority_accepted"] / rules_dict[rule_names[i]]["Majority_total"], 3)
+        else:
+            rules_dict[rule_names[i]]["Majority_Score"] = 0
 
         rules_dict[rule_names[i]]["Plurality_fraction"] = str(rules_dict[rule_names[i]]["Plurality_accepted"]) \
                                                          + "/" + str(rules_dict[rule_names[i]]["Plurality_total"])
-        rules_dict[rule_names[i]]["Plurality_Score"] = round(
-            rules_dict[rule_names[i]]["Plurality_accepted"] / rules_dict[rule_names[i]]["Plurality_total"], 3)
+
+        if rules_dict[rule_names[i]]["Plurality_total"] != 0:
+            rules_dict[rule_names[i]]["Plurality_Score"] = round(
+                rules_dict[rule_names[i]]["Plurality_accepted"] / rules_dict[rule_names[i]]["Plurality_total"], 3)
+        else:
+            rules_dict[rule_names[i]]["Plurality_Score"] = 0
 
         print("Average IM Cross entropy:", rules_dict[rule_names[i]]["IM_CCE_mean"])
 
