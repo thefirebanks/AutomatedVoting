@@ -1,5 +1,25 @@
 import random
 import pandas as pd
+import cProfile, pstats, io
+
+# Taken from Sebastiaan Mathôt's https://www.youtube.com/watch?v=8qEnExGLZfY and https://osf.io/upav8/
+def profile(fnc):
+    """A decorator that uses cProfile to profile a function"""
+
+    def inner(*args, **kwargs):
+        pr = cProfile.Profile()
+        pr.enable()
+        retval = fnc(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+        return retval
+
+    return inner
+
 
 def train_test_split(X, test_size, seed):
     random.seed(seed)

@@ -22,6 +22,8 @@ from whalrus.ballot.BallotOrder import BallotOrder
 import argparse
 import re
 import ast
+import cProfile
+import random
 
 DATASET_FOLDER = "../../data"
 
@@ -458,6 +460,13 @@ def number_of_duplicates(arrays):
 
     return len(final_IM_matrices)
 
+
+def is_duplicate(matrix, dataset):
+    for profile in dataset:
+        if np.array_equal(profile._rank_matrix, matrix._rank_matrix):
+            return True
+    return False
+
 ##########################################################################
 
 def generate_profile_dataset(num_profiles, n_voters, candidates, origin, params, r_seed):
@@ -469,9 +478,24 @@ def generate_profile_dataset(num_profiles, n_voters, candidates, origin, params,
     all_candidates_idx = list(range(len(candidates)))
     IM_tuples = get_cartesian_product(all_candidates_idx)
 
-    for i in tqdm(range(num_profiles)):
-        dataset.append(AVProfile(n_voters, origin, params, candidates, IM_tuples))
-    
+    # for i in tqdm(range(num_profiles)):
+    i = 0
+    repeated = 0
+    while i < num_profiles:
+        new_profile = AVProfile(n_voters, origin, params, candidates, IM_tuples)
+        if not is_duplicate(new_profile, dataset):
+            dataset.append(new_profile)
+            i += 1
+        else:
+            if repeated == i:
+                break
+            repeated += 1
+            print(f"Duplicate found. Total duplicates: {repeated}. Re-generating...")
+
+        if i % 50 == 0:
+            print("Generating:", i, "profiles...")
+
+    print(f"Generated {i} profiles, with {repeated} duplicates avoided.")
     return dataset
 
 
